@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "profiles": 4,
+  "runs": 4,
+  "smoke_requests": 12,
+  "warmup_requests": 4,
+  "native_counter_and_timing_checks": "passed",
+  "issues": []
+}

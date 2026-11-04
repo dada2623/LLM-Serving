@@ -1,0 +1,17 @@
+run_id,service,profile,case_id,warmup,status,input_tokens,output_tokens,input_count_matches,retokenized_output_tokens,ttft_ms,ttfb_body_ms,e2e_ms,tpot_chunk_observed_ms,decode_chunk_observed_tokens_s,content_chunks,finish_reason
+run-001-vllm-p0-existing-f1399a9d-r01,vllm,existing,warmup,True,success,29,2,,1,46255.4128,46255.3237,46559.624,,,1,stop
+run-001-vllm-p0-existing-f1399a9d-r01,vllm,existing,p0-input-128,False,success,128,32,True,32,627.4695,627.3577,9303.9285,279.86748387096776,3.57311962850621,32,length
+run-001-vllm-p0-existing-f1399a9d-r01,vllm,existing,p0-input-512,False,success,512,32,True,32,710.1728,709.9518,9835.7979,294.35412580645163,3.397268501877687,32,length
+run-001-vllm-p0-existing-f1399a9d-r01,vllm,existing,p0-input-2048,False,success,2048,32,True,32,2677.2384,2676.8419,11714.5044,291.50733225806454,3.430445444558231,32,length
+run-002-sglang-p0-existing-c58bf71d-r01,sglang,existing,warmup,True,success,29,2,,1,813.9686,813.9221,947.347,,,1,stop
+run-002-sglang-p0-existing-c58bf71d-r01,sglang,existing,p0-input-128,False,success,128,32,True,32,927.9123,927.8838,5003.0331,131.44876451612905,7.607526808495016,32,length
+run-002-sglang-p0-existing-c58bf71d-r01,sglang,existing,p0-input-512,False,success,512,32,True,32,268.0292,267.9993,4314.5054,130.5246,7.66139103280148,32,length
+run-002-sglang-p0-existing-c58bf71d-r01,sglang,existing,p0-input-2048,False,success,2048,32,True,32,910.4548,910.4143,4964.1686,130.7608258064516,7.64755035640545,32,length
+run-003-vllm-p0-control-c17a9fed-r01,vllm,control,warmup,True,success,29,2,,1,43677.5739,43677.495,43960.3925,,,1,stop
+run-003-vllm-p0-control-c17a9fed-r01,vllm,control,p0-input-128,False,success,128,32,True,32,565.4681,565.3236,9025.9611,272.9039064516129,3.6642934613957405,32,length
+run-003-vllm-p0-control-c17a9fed-r01,vllm,control,p0-input-512,False,success,512,32,True,32,655.648,655.5202,9306.0533,279.03205806451615,3.5838175976496074,32,length
+run-003-vllm-p0-control-c17a9fed-r01,vllm,control,p0-input-2048,False,success,2048,32,True,32,2668.3042,2668.25,11397.4801,281.57049677419354,3.551508455099092,32,length
+run-004-sglang-p0-control-ee0ce0f8-r01,sglang,control,warmup,True,success,29,2,,1,827.5677,827.5362,975.0161,,,1,stop
+run-004-sglang-p0-control-ee0ce0f8-r01,sglang,control,p0-input-128,False,success,128,32,True,32,946.8049,946.7778,4996.4281,130.62834516129033,7.655306348444308,32,length
+run-004-sglang-p0-control-ee0ce0f8-r01,sglang,control,p0-input-512,False,success,512,32,True,32,271.5684,271.5415,4319.6202,130.57721612903225,7.6583038729500235,32,length
+run-004-sglang-p0-control-ee0ce0f8-r01,sglang,control,p0-input-2048,False,success,2048,32,True,32,898.9672,898.9091,4943.7981,130.47401612903226,7.664361300958577,32,length

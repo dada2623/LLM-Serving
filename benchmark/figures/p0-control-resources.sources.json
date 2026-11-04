@@ -1,0 +1,15 @@
+{
+  "run_ids": [
+    "run-003-vllm-p0-control-c17a9fed-r01",
+    "run-004-sglang-p0-control-ee0ce0f8-r01"
+  ],
+  "script": "benchmark/scripts/summarize_p0.py",
+  "inputs": [
+    "gpu.csv",
+    "host.csv"
+  ],
+  "plotting_packages": {
+    "matplotlib": "3.11.2",
+    "numpy": "2.5.4"
+  }
+}

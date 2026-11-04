@@ -1,0 +1,334 @@
+{
+  "batch_id": "run-009-offload-ablation",
+  "hypothesis": "per-token UVA reads of MLP weights across PCIe dominate decode latency",
+  "fixed": {
+    "service": "vllm",
+    "dtype": "float16",
+    "max_model_len": 16384,
+    "max_num_seqs": 1,
+    "max_num_batched_tokens": 512,
+    "enforce_eager": true,
+    "gpu_memory_utilization": 0.72,
+    "gpu_memory_utilization_zero_arm": 0.8,
+    "dataset": "benchmark/datasets/p0-requests.json"
+  },
+  "pcie_probe": {
+    "torch": "2.13.0+cu130",
+    "cuda_build": "13.0",
+    "device": "NVIDIA GeForce RTX 5070 Ti",
+    "bytes": 268435456,
+    "pinned_h2d": {
+      "median_ms": 10.997554999999437,
+      "best_ms": 10.956509000001446,
+      "gib_per_s": 22.732325503260753,
+      "gb_per_s": 24.40864864963292,
+      "samples_ms": [
+        11.014,
+        11.003,
+        10.973,
+        10.957,
+        11.001,
+        10.986,
+        10.964,
+        10.985,
+        10.976,
+        10.957,
+        11.052,
+        11.053,
+        11.045,
+        11.028,
+        10.998
+      ]
+    },
+    "pinned_d2h": {
+      "median_ms": 9.513712999998702,
+      "best_ms": 9.473537999999948,
+      "gib_per_s": 26.27785807707612,
+      "gb_per_s": 28.21563526249285,
+      "samples_ms": [
+        9.499,
+        9.483,
+        9.546,
+        9.497,
+        9.496,
+        9.49,
+        9.531,
+        9.485,
+        9.474,
+        9.55,
+        9.514,
+        9.731,
+        9.652,
+        9.702,
+        9.575
+      ]
+    },
+    "pageable_h2d": {
+      "median_ms": 14.511527999999885,
+      "best_ms": 13.652207999999888,
+      "gib_per_s": 17.227682708533656,
+      "gb_per_s": 18.498083454754187,
+      "samples_ms": [
+        14.904,
+        13.763,
+        13.779,
+        14.597,
+        13.884,
+        14.512,
+        15.428,
+        14.699,
+        14.398,
+        15.027,
+        15.27,
+        14.113,
+        14.039,
+        14.637,
+        13.652
+      ]
+    },
+    "uva_view": {
+      "error": "AttributeError(\"'_OpNamespace' '_C' object has no attribute 'get_cuda_view_from_cpu_tensor'\")"
+    }
+  },
+  "arms": [
+    {
+      "run_id": "run-006-vllm-offload-g5.0-9fbabb1f-r01",
+      "service": "vllm",
+      "arm": "offload-5.0gib",
+      "status": "passed",
+      "cpu_offload_gb_arg": 5.0,
+      "gpu_memory_utilization": 0.72,
+      "offloaded_declared_gib": 2.55,
+      "ready_observed_seconds": 115.15419899998233,
+      "model_loading_gpu_gib": 7.74,
+      "consumed_memory_gib": 7.88,
+      "kv_cache_gib": 3.29,
+      "kv_cache_tokens": 87525,
+      "sampled_gpu_peak_mib": 15223.0,
+      "offloader": "UVAOffloader",
+      "median_decode_chunk_tokens_per_s": 3.526285374813309,
+      "requests_successful": 3,
+      "requests_planned": 3,
+      "requests": [
+        {
+          "case_id": "p0-input-128",
+          "usage": {
+            "prompt_tokens": 128,
+            "total_tokens": 160,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          },
+          "ttft_ms": 665.8865,
+          "e2e_ms": 9457.8815,
+          "tpot_chunk_observed_ms": 283.584535483871,
+          "decode_chunk_observed_tokens_per_s": 3.526285374813309,
+          "e2e_output_tokens_per_s": 3.3834215410713275,
+          "content_chunks": 32,
+          "finish_reason": "length",
+          "input_token_count_matches": true
+        },
+        {
+          "case_id": "p0-input-512",
+          "usage": {
+            "prompt_tokens": 512,
+            "total_tokens": 544,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          },
+          "ttft_ms": 674.9906,
+          "e2e_ms": 9494.3464,
+          "tpot_chunk_observed_ms": 284.47560967741936,
+          "decode_chunk_observed_tokens_per_s": 3.51523985178887,
+          "e2e_output_tokens_per_s": 3.3704268468654144,
+          "content_chunks": 32,
+          "finish_reason": "length",
+          "input_token_count_matches": true
+        },
+        {
+          "case_id": "p0-input-2048",
+          "usage": {
+            "prompt_tokens": 2048,
+            "total_tokens": 2080,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          },
+          "ttft_ms": 2539.5741,
+          "e2e_ms": 11133.8695,
+          "tpot_chunk_observed_ms": 277.2130870967742,
+          "decode_chunk_observed_tokens_per_s": 3.607333298989969,
+          "e2e_output_tokens_per_s": 2.8741130835061433,
+          "content_chunks": 32,
+          "finish_reason": "length",
+          "input_token_count_matches": true
+        }
+      ],
+      "error": null,
+      "implied_pcie_gib_per_s": 8.992027705773937
+    },
+    {
+      "run_id": "run-007-vllm-offload-g2.0-471ec055-r01",
+      "service": "vllm",
+      "arm": "offload-2.0gib",
+      "status": "passed",
+      "cpu_offload_gb_arg": 2.0,
+      "gpu_memory_utilization": 0.72,
+      "offloaded_declared_gib": 2.01,
+      "ready_observed_seconds": 108.50958230000106,
+      "model_loading_gpu_gib": 8.28,
+      "consumed_memory_gib": 8.42,
+      "kv_cache_gib": 2.74,
+      "kv_cache_tokens": 73296,
+      "sampled_gpu_peak_mib": 15369.0,
+      "offloader": "UVAOffloader",
+      "median_decode_chunk_tokens_per_s": 4.005171166932976,
+      "requests_successful": 3,
+      "requests_planned": 3,
+      "requests": [
+        {
+          "case_id": "p0-input-128",
+          "usage": {
+            "prompt_tokens": 128,
+            "total_tokens": 160,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          },
+          "ttft_ms": 530.4737,
+          "e2e_ms": 8260.462,
+          "tpot_chunk_observed_ms": 249.33846451612902,
+          "decode_chunk_observed_tokens_per_s": 4.010612650320996,
+          "e2e_output_tokens_per_s": 3.873875335302069,
+          "content_chunks": 32,
+          "finish_reason": "length",
+          "input_token_count_matches": true
+        },
+        {
+          "case_id": "p0-input-512",
+          "usage": {
+            "prompt_tokens": 512,
+            "total_tokens": 544,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          },
+          "ttft_ms": 619.2561,
+          "e2e_ms": 8359.6843,
+          "tpot_chunk_observed_ms": 249.6772193548387,
+          "decode_chunk_observed_tokens_per_s": 4.005171166932976,
+          "e2e_output_tokens_per_s": 3.8278957496038455,
+          "content_chunks": 32,
+          "finish_reason": "length",
+          "input_token_count_matches": true
+        },
+        {
+          "case_id": "p0-input-2048",
+          "usage": {
+            "prompt_tokens": 2048,
+            "total_tokens": 2080,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          },
+          "ttft_ms": 2384.2955,
+          "e2e_ms": 10339.4953,
+          "tpot_chunk_observed_ms": 256.6036322580645,
+          "decode_chunk_observed_tokens_per_s": 3.897060969870866,
+          "e2e_output_tokens_per_s": 3.094928627705842,
+          "content_chunks": 32,
+          "finish_reason": "length",
+          "input_token_count_matches": true
+        }
+      ],
+      "error": null,
+      "implied_pcie_gib_per_s": 8.050394045535281
+    },
+    {
+      "run_id": "run-010-vllm-offload-g0.0-0e826292-r01",
+      "service": "vllm",
+      "arm": "offload-0.0gib",
+      "status": "passed",
+      "cpu_offload_gb_arg": 0.0,
+      "gpu_memory_utilization": 0.8,
+      "offloaded_declared_gib": null,
+      "ready_observed_seconds": 114.83364649998839,
+      "model_loading_gpu_gib": 10.28,
+      "consumed_memory_gib": 11.35,
+      "kv_cache_gib": 1.33,
+      "kv_cache_tokens": 35354,
+      "sampled_gpu_peak_mib": 15284.0,
+      "offloader": null,
+      "median_decode_chunk_tokens_per_s": 28.751345748473582,
+      "requests_successful": 3,
+      "requests_planned": 3,
+      "requests": [
+        {
+          "case_id": "p0-input-128",
+          "usage": {
+            "prompt_tokens": 128,
+            "total_tokens": 160,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          },
+          "ttft_ms": 92.0688,
+          "e2e_ms": 1170.8099,
+          "tpot_chunk_observed_ms": 34.780980645161286,
+          "decode_chunk_observed_tokens_per_s": 28.751345748473582,
+          "e2e_output_tokens_per_s": 27.331507873310603,
+          "content_chunks": 32,
+          "finish_reason": "length",
+          "input_token_count_matches": true
+        },
+        {
+          "case_id": "p0-input-512",
+          "usage": {
+            "prompt_tokens": 512,
+            "total_tokens": 544,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          },
+          "ttft_ms": 126.8473,
+          "e2e_ms": 1238.5526,
+          "tpot_chunk_observed_ms": 35.848222580645164,
+          "decode_chunk_observed_tokens_per_s": 27.895385824230814,
+          "e2e_output_tokens_per_s": 25.836609603823042,
+          "content_chunks": 32,
+          "finish_reason": "length",
+          "input_token_count_matches": true
+        },
+        {
+          "case_id": "p0-input-2048",
+          "usage": {
+            "prompt_tokens": 2048,
+            "total_tokens": 2080,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          },
+          "ttft_ms": 515.4022,
+          "e2e_ms": 1567.4911,
+          "tpot_chunk_observed_ms": 33.92741935483871,
+          "decode_chunk_observed_tokens_per_s": 29.47468504872831,
+          "e2e_output_tokens_per_s": 20.414788957972394,
+          "content_chunks": 32,
+          "finish_reason": "length",
+          "input_token_count_matches": true
+        }
+      ],
+      "error": null
+    }
+  ]
+}

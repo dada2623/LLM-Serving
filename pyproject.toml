@@ -1,0 +1,17 @@
+[project]
+name = "llm-deployment"
+version = "0.1.0"
+description = "Local PyTorch CUDA environment for LLM deployment"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy>=2,<3",
+    "torch==2.14.1+cu132",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu132" }
+
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true

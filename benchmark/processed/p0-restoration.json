@@ -1,0 +1,22 @@
+{
+  "status": "passed",
+  "production_env_unchanged": true,
+  "services": [
+    {
+      "service": "vllm",
+      "container_state": "created",
+      "running": false,
+      "production_command_matches": true,
+      "production_environment_matches": true,
+      "image_id": "sha256:3ad34b95d01ae1660c5ee105ee3ea878251f2e62d2aef4d825628ff5d1d66ea4"
+    },
+    {
+      "service": "sglang",
+      "container_state": "created",
+      "running": false,
+      "production_command_matches": true,
+      "production_environment_matches": true,
+      "image_id": "sha256:4dee609dddf68a8ae3b3e7130bda5ac38128599ddca1765dbd5b0e2d52d8687e"
+    }
+  ]
+}

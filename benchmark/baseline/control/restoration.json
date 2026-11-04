@@ -1,0 +1,31 @@
+{
+  "result": {
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": " Container llm-deployment-sglang-1 Recreate \n Container llm-deployment-vllm-1 Recreate \n Container llm-deployment-vllm-1 Recreated \n Container llm-deployment-sglang-1 Recreated \n"
+  },
+  "env_unchanged": true,
+  "compose_unchanged": true,
+  "containers": {
+    "vllm": {
+      "Status": "created",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "ExitCode": 0,
+      "Error": ""
+    },
+    "sglang": {
+      "Status": "created",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "ExitCode": 0,
+      "Error": ""
+    }
+  }
+}

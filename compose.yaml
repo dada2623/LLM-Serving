@@ -1,0 +1,146 @@
+name: llm-deployment
+
+x-environment: &environment
+  HF_HOME: /root/.cache/huggingface
+  HF_TOKEN: ${HF_TOKEN:-}
+  LLM_API_KEY: ${API_KEY:-local-dev-key-change-me}
+  NVIDIA_DRIVER_CAPABILITIES: compute,utility
+  OMP_NUM_THREADS: "4"
+
+x-volumes: &volumes
+  - type: bind
+    source: ${HF_CACHE_DIR:-./.cache/huggingface}
+    target: /root/.cache/huggingface
+  - type: bind
+    source: ${LOCAL_MODELS_DIR:-./models}
+    target: /models
+    read_only: true
+
+x-gpu: &gpu
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities: [gpu]
+
+services:
+  vllm:
+    image: llm-deployment/vllm:local
+    build:
+      context: .
+      dockerfile: docker/vllm/Dockerfile
+      args:
+        BASE_IMAGE: ${VLLM_BASE_IMAGE:-vllm/vllm-openai:v0.32.0}
+    platform: linux/amd64
+    environment: *environment
+    volumes: *volumes
+    deploy: *gpu
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${VLLM_PORT:-8000}:8000"
+    shm_size: 2gb
+    init: true
+    command:
+      - ${VLLM_MODEL:-/models/Qwen3.5-9B-AWQ}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --served-model-name
+      - ${SERVED_MODEL_NAME:-Qwen3.5-9B-AWQ}
+      - --api-key
+      - ${API_KEY:-local-dev-key-change-me}
+      - --dtype
+      - ${MODEL_DTYPE:-float16}
+      - --max-model-len
+      - ${MAX_MODEL_LEN:-16384}
+      - --gpu-memory-utilization
+      - ${VLLM_GPU_MEMORY_UTILIZATION:-0.60}
+      - --cpu-offload-gb
+      - ${VLLM_CPU_OFFLOAD_GB:-5}
+      - --cpu-offload-params
+      - ${VLLM_CPU_OFFLOAD_PARAMS:-mlp}
+      - --max-num-seqs
+      - ${MAX_CONCURRENT_REQUESTS:-1}
+      - --max-num-batched-tokens
+      - ${VLLM_MAX_BATCHED_TOKENS:-512}
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - qwen3_coder
+      - --reasoning-parser
+      - qwen3
+      - --default-chat-template-kwargs
+      - '{"enable_thinking":false}'
+      - --language-model-only
+      - --enforce-eager
+    healthcheck:
+      test: [CMD, python3, -c, "import os, urllib.request; req = urllib.request.Request('http://127.0.0.1:8000/health', headers={'Authorization': 'Bearer ' + os.environ['LLM_API_KEY']}); urllib.request.urlopen(req, timeout=5).close()"]
+      interval: 15s
+      timeout: 10s
+      retries: 120
+      start_period: 120s
+    stop_grace_period: 30s
+
+  sglang:
+    image: llm-deployment/sglang:local
+    build:
+      context: .
+      dockerfile: docker/sglang/Dockerfile
+      args:
+        BASE_IMAGE: ${SGLANG_BASE_IMAGE:-lmsysorg/sglang:v0.5.22}
+    platform: linux/amd64
+    environment:
+      <<: *environment
+      SGLANG_CPU_OFFLOAD_MLP_ONLY: "1"
+    volumes: *volumes
+    deploy: *gpu
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${SGLANG_PORT:-30000}:30000"
+    shm_size: 2gb
+    init: true
+    command:
+      - --model-path
+      - ${SGLANG_MODEL:-/models/Qwen3.5-9B-AWQ}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "30000"
+      - --served-model-name
+      - ${SERVED_MODEL_NAME:-Qwen3.5-9B-AWQ}
+      - --api-key
+      - ${API_KEY:-local-dev-key-change-me}
+      - --dtype
+      - ${SGLANG_MODEL_DTYPE:-bfloat16}
+      - --context-length
+      - ${SGLANG_CONTEXT_LENGTH:-32768}
+      - --mem-fraction-static
+      - ${SGLANG_MEM_FRACTION_STATIC:-0.65}
+      - --cpu-offload-gb
+      - ${SGLANG_CPU_OFFLOAD_GB:-5}
+      - --max-running-requests
+      - ${MAX_CONCURRENT_REQUESTS:-1}
+      - --max-mamba-cache-size
+      - ${SGLANG_MAX_MAMBA_CACHE_SIZE:-5}
+      - --max-total-tokens
+      - ${SGLANG_MAX_TOTAL_TOKENS:-32768}
+      - --chunked-prefill-size
+      - ${SGLANG_CHUNKED_PREFILL_SIZE:-512}
+      - --json-model-override-args
+      - '{"language_model_only":true}'
+      - --tool-call-parser
+      - qwen3_coder
+      - --reasoning-parser
+      - qwen3
+      - --default-chat-template-kwargs
+      - '{"enable_thinking":false}'
+      - --cuda-graph-backend-decode
+      - disabled
+      - --cuda-graph-backend-prefill
+      - disabled
+    healthcheck:
+      test: [CMD, python3, -c, "import os, urllib.request; req = urllib.request.Request('http://127.0.0.1:30000/health', headers={'Authorization': 'Bearer ' + os.environ['LLM_API_KEY']}); urllib.request.urlopen(req, timeout=5).close()"]
+      interval: 15s
+      timeout: 10s
+      retries: 120
+      start_period: 120s
+    stop_grace_period: 30s

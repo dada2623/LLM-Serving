@@ -1,0 +1,53 @@
+{
+  "stage": "P2",
+  "seed": 20261031,
+  "server_concurrency": 16,
+  "client_concurrency": [
+    1,
+    2,
+    4,
+    8,
+    16
+  ],
+  "vllm_pool_bytes": 1610612736,
+  "sglang_state_slots": 17,
+  "sglang_token_pool": 20480,
+  "dtype": "bfloat16",
+  "context_length": 16384,
+  "cpu_offload_gib": 0,
+  "graphs": "disabled",
+  "prefix_reuse": "disabled on both engines",
+  "screen_requests": 30,
+  "formal_requests": 100,
+  "formal_min_seconds": 60,
+  "repeats": 3,
+  "request_timeout_seconds": 180,
+  "slo_policy": "Synthetic benchmark thresholds fixed before engine measurements; not production requirements",
+  "slo_ttft_ms": {
+    "128": 2000,
+    "512": 3000,
+    "2048": 5000,
+    "8192": 10000
+  },
+  "slo_tpot_ms": 100,
+  "slo_e2e": "TTFT threshold + output_target * 100ms",
+  "slo_error_rate_max": 0.01,
+  "slo_attainment_min": 0.95,
+  "scope": "closed-loop control; open-loop and true static batch excluded",
+  "formal_selection": "all screened cells with >=30 successes in every repeat and zero errors; failed cells retained",
+  "long_mixed_gate": "first three workloads must have valid formal results on both engines",
+  "restoration": "restore production container definitions; original services initially stopped",
+  "dataset_sha256": "fbcd55c9ef25f4f28a788cfef8566eb7e264e9db693d15c4245005187d89d53d",
+  "tokenizer_gate": "passed: identical messages and token IDs in both installed images",
+  "sglang_mem_fraction": 0.9,
+  "pool_alignment": {
+    "vllm_configured_bytes": 1610612736,
+    "sglang_kv_expected_bytes": 671088640,
+    "sglang_ssm_expected_bytes": 905969664,
+    "sglang_conv_expected_bytes": 21233664,
+    "note": "SGLang formulas require runtime allocation confirmation; vLLM pooled hybrid capacity differs from fixed SGLang pool"
+  },
+  "max_cache_budget_residual_fraction": 0.02,
+  "batch_shape_warmup": "one excluded 8-output-token wave at each cell concurrency and input shape",
+  "startup_probe": "deduplicated actual tensor storage; zero CPU model parameter bytes required"
+}
