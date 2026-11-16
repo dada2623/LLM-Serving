@@ -1,0 +1,16 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates python3 python3.12-dev gcc libc6-dev \
+    libnuma1 libelf1t64 libdw1t64 libdrm2 libdrm-amdgpu1 libstdc++6 libzstd1 libtinfo6 libgomp1 libopenmpi3t64 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY start-vllm.sh /app/start-vllm.sh
+COPY validate-vllm-runtime.py /app/validate-vllm-runtime.py
+COPY smoke-vllm-engine.py /app/smoke-vllm-engine.py
+RUN chmod 755 /app/start-vllm.sh
+
+ENV PATH=/opt/llm-serving/venvs/vllm-rocm100-v033/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+WORKDIR /app
+ENTRYPOINT ["/app/start-vllm.sh"]

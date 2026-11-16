@@ -1,0 +1,99 @@
+{
+  "slo": {
+    "S": {
+      "ttft_s": 1,
+      "tpot_s": 0.06265894844075565
+    },
+    "L": {
+      "ttft_s": 10.65198811900027,
+      "tpot_s": 0.06694774253382574
+    },
+    "C": {
+      "ttft_s": 10.124272411599668,
+      "tpot_s": 0.06476706144589466
+    },
+    "M": {
+      "ttft_s": 1.3578175310996812,
+      "tpot_s": 0.061357084395296406
+    }
+  },
+  "trace_rates": {
+    "M-code": {
+      "lambda_N": 0.02448046352256613,
+      "trials": [
+        {
+          "rate": 0.012240231761283065,
+          "passed": true,
+          "queue_growth": false,
+          "slo_fraction": 0.95
+        },
+        {
+          "rate": 0.019584370818052903,
+          "passed": true,
+          "queue_growth": false,
+          "slo_fraction": 0.95
+        },
+        {
+          "rate": 0.02448046352256613,
+          "passed": true,
+          "queue_growth": false,
+          "slo_fraction": 1.0
+        },
+        {
+          "rate": 0.029376556227079353,
+          "passed": false,
+          "queue_growth": false,
+          "slo_fraction": 0.85
+        }
+      ]
+    },
+    "M-interference": {
+      "lambda_N": 0.07527240235711412,
+      "trials": [
+        {
+          "rate": 0.01881810058927853,
+          "passed": true,
+          "queue_growth": false,
+          "slo_fraction": 1.0
+        },
+        {
+          "rate": 0.030108960942845653,
+          "passed": true,
+          "queue_growth": false,
+          "slo_fraction": 1.0
+        },
+        {
+          "rate": 0.03763620117855706,
+          "passed": true,
+          "queue_growth": false,
+          "slo_fraction": 1.0
+        },
+        {
+          "rate": 0.04516344141426847,
+          "passed": true,
+          "queue_growth": false,
+          "slo_fraction": 1.0
+        },
+        {
+          "rate": 0.060217921885691306,
+          "passed": true,
+          "queue_growth": false,
+          "slo_fraction": 1.0
+        },
+        {
+          "rate": 0.07527240235711412,
+          "passed": true,
+          "queue_growth": false,
+          "slo_fraction": 1.0
+        }
+      ]
+    }
+  },
+  "calibration_means_s": {
+    "S": 21.13466400140005,
+    "L": 16.122719015700387,
+    "C": 48.312158992399965,
+    "M": 10.995862725900405
+  },
+  "definition": "Synthetic SLO, frozen across deployments; rates calibrated separately per trace."
+}

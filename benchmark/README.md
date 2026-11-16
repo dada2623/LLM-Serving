@@ -1,79 +1,122 @@
-# 本机模型测试
+# Benchmark 技术记录
 
-测试对象为 RTX 5070 Ti 上的 `QuantTrio/Qwen3.5-9B-AWQ`。两框架共用模型、tokenizer 和请求数据，分别使用各自的官方镜像栈。
+这个目录记录模型 serving 的测量口径、运行时组合、验证方法和证据组织。
 
-P0–P4 共 5 项工作已完成。编号、完成标准和未测范围见 [PLAN.md](PLAN.md)。
+## 研究范围
 
-## 找报告
+项目包含两条线：
 
-| 要查的内容 | 文件 |
-| --- | --- |
-| P0：候选配置能否运行，采集是否准确 | [采集验收](reports/P0-REPORT.md) |
-| P1：vLLM CPU 卸载为何拖慢 Decode | [卸载诊断](reports/OFFLOAD-ABLATION.md) |
-| P2：两框架实际占用如何对齐 | [冻结配置与资源](p2/control/README.md)、[张量账本](p2/control/resource-alignment.json) |
-| P3：启动、空闲和停服后的资源 | [基线报告](baseline/control/REPORT.md) |
-| P4：正式并发、延迟、吞吐和 SLO | [正式报告](p2/control/REPORT.md) |
+1. vLLM/SGLang 单卡对照，关注 CPU 权重卸载、实际张量资源、并发尾延迟和资源生命周期。
+2. NVIDIA RTX 5070 Ti 与 AMD RX 7800 XT 的异构双机 PD，关注 Prefill/Decode 角色切分、GPU 状态传输和混合负载下的取舍。
 
-公开目录 `p2/control/` 同时包含 P2 校准和 P4 正式测试。任务编号以 PLAN 为准。报告与汇总已去除实际日期、绝对时间戳及主机信息，原始采集材料仅保留在本机；发布范围见[说明](../docs/publication.md)。
+单卡对照的公开报告位于 `reports/`、`p2/control/` 和 `baseline/control/`。异构 PD 的计划、结果和图表位于 `pd/`。
 
-## 三批配置分开看
+## 异构 PD 的技术路径
 
-| 配置 | 用途 | 关键设置 |
+### 服务角色
+
+| 方案 | NVIDIA RTX 5070 Ti | AMD RX 7800 XT | 作用 |
+| --- | --- | --- | --- |
+| N | 完整推理 | 空闲 | NVIDIA 单卡基线 |
+| A | 空闲 | 完整推理 | AMD 单卡基线 |
+| NP-AD | Prefill | Decode | 已完成可行性验证的方向 |
+| AP-ND | Decode | Prefill | 反向角色验证 |
+| REPLICAS | 完整副本 | 完整副本 | 两卡独立副本对照 |
+
+成功的 PD 路径使用 SGLang 的 `mooncake_tcp` 后端。NVIDIA 端负责 Prefill，AMD 端接收 Attention KV、Mamba/GDN 状态和辅助 metadata，再继续 Decode。两端通过可路由的测试网络互相访问；只转发固定服务端口无法覆盖 Mooncake 发布的动态端口。
+
+关键配置为：
+
+```text
+--disaggregation-transfer-backend mooncake_tcp
+MC_FORCE_TCP=1
+MOONCAKE_PROTOCOL=tcp
+--cpu-offload-gb 0
+```
+
+实验使用 TCP、主机网络缓冲、TUN/SSH 转发和 SSH 加密。没有把这条路径当作 RDMA 或 GPUDirect 结果。主机侧 TCP 缓冲属于网络路径，而非模型权重 CPU offload。
+
+## 实验环境与软件栈
+
+| 项目 | NVIDIA 端 | AMD 端 |
 | --- | --- | --- |
-| 生产默认 `.env` | 日常启动、早期功能验收 | vLLM FP16/16K/0.60；SGLang BF16/32K/0.65；卸载预算均 5 GiB，并发上限 1 |
-| P0 控制候选 | 验证共同参数与采集链路 | BF16/16K/0.65，卸载预算 5 GiB，并发上限 1 |
-| P2 冻结 Control | P3 基线与 P4 正式统计 | BF16/16K、0 GiB 卸载、并发上限 16，按实际张量字节校准缓存池 |
+| 执行环境 | 独立 Docker 容器 | WSL 内独立虚拟环境 |
+| GPU | RTX 5070 Ti，16 GB | RX 7800 XT，16 GB |
+| 框架 | SGLang 0.5.22 | SGLang 0.5.22 |
+| SGLang 源码 | 同一固定 revision | 同一固定 revision |
+| PyTorch | 2.14.1 + CUDA 13.0 | 2.13.0 + ROCm 10.0 |
+| 模型 | QuantTrio/Qwen3.5-9B-AWQ | 同一 checkpoint |
+| dtype / 量化 | FP16 / AWQ | FP16 / AWQ，Triton 路径 |
+| context / token 池 | 8K / 8K（可行性批次） | 8K / 8K（可行性批次） |
+| 静态显存比例 | 0.90 | 0.90 |
+| 最大运行请求 / Mamba 槽 | 1 / 5 | 1 / 5 |
+| chunked prefill | 256 | 256 |
+| Attention / GDN 后端 | Triton | Triton |
+| CUDA Graph / overlap / radix cache | 关闭 | 关闭 |
+| CPU 权重卸载 | 0 GiB | 0 GiB |
 
-P0 报告展示两组控制候选的 6 条小负载请求和 2 条预热。现有部署组保留原始归档，未纳入报告展示。P0 每个长度只请求一次，可用于核对 token 和计时，样本量不足以作性能排名。
+PD 正式计划把 context 提升到 32K，并重新校准 token 池、状态槽、角色专用缓冲和峰值显存。可行性批次的 8K 设置不能直接当作正式容量结论。
 
-P4 筛选完成 90 单元、2700 条成功请求；正式完成 90 单元、10098 条成功请求，错误均为 0。正式 6 个单元未达延迟 SLO。按 128/128、512/256、2048/256 三档负载，两框架三轮均达标的最大已测闭环并发都是 16/16/8。
+AMD 侧不是现成的官方消费级显卡镜像。实验源码放开了 `gfx1101` 编译目标，构建 HIP AOT kernel，并验证 AWQ 反量化、GEMM 和 SiLU。AITER 路径没有作为本次结果的前提；Triton 用于 AMD 的 AWQ 和算子路径。
 
-生产默认配置尚无正式并发矩阵和三轮资源基线。SGLang 卸载消融、8192/128、混合长度、开环到达率和静态 batch 对照均未执行。
+## 做过的适配和诊断
 
-## 指标怎么读
+### 归一化接口适配
+
+首个推理请求暴露出 SGLang 调用侧和已安装 vLLM 依赖之间的 RMSNorm 参数签名差异。实验补丁在运行时检查签名，选择 SGLang 原生归一化回退。生产 vLLM 安装包没有修改。
+
+### 传输和缓存校验
+
+传输探针记录发送字节数和返回码。缓存校验探针在发送前和接收后读取选定 GPU 区域，在 CPU 上计算 Adler-32；独立 buffer 探针使用 SHA-256。探针与 CPU 参考值一致，修改一个字节可以被发现。校验会增加复制和同步开销，因此只用于验收，不用于性能计时。
+
+## 已完成的可行性验证
+
+| 检查 | 结果 | 说明 |
+| --- | --- | --- |
+| Mooncake GPU buffer 双向写入 | 4/4 通过 | 1 MiB、16 MiB 两档，两个方向，接收端 SHA-256 一致 |
+| AMD 单机模型 | 通过 | 普通 Chat 和 SSE 均能完成，保留短生成和长生成基线 |
+| 短请求 P/D | 两轮均 3/3 通过 | HTTP 200，24-token 输出与 AMD 单机 token ID 一致 |
+| 分块 Prefill | 完成 | 613-token 输入按 256/256/101 分块，完成 128-token 输出 |
+| 混合状态传输 | 已观测 | 每次 48 个 Mamba/GDN 状态块，共 51,511,296 字节，返回码为 0 |
+| P/D Chat SSE | 通过 | 返回内容、`finish_reason=stop` 和 `[DONE]` |
+| 长请求缓存校验 | 2/2 通过 | 长请求和多轮消息在 Decode 前的 64 个 GPU 区域一致 |
+| 多轮消息 Chat SSE | 通过 | `user / assistant / user` 三条历史消息正常返回 |
+
+这些结果验证了请求链路和状态传输。它们没有测量吞吐、容量或稳定性。
+
+## 输出差异的解释边界
+
+613-token 请求的 PD 输出前 110 个 token 与 AMD 单机基线一致，从第 111 个 token 开始分歧。启用校验后，长请求覆盖 64 个区域、约 71,598,080 字节；多轮请求覆盖 64 个区域、约 53,149,696 字节。发送端与接收端校验值一致，且没有触发接收校验失败。
+
+Adler-32 不是强校验，整份缓存没有做逐字节导出比较；独立 buffer 探针只覆盖选定区域并使用 SHA-256。当前证据排除了本轮观测范围内的缓存搬运损坏，但没有在浮点算子、运行时和归一化实现之间定位剩余差异，也没有证明 CUDA 与 ROCm 逐项语义一致。
+
+## 单卡 benchmark 的测量口径
 
 | 指标 | 定义 |
 | --- | --- |
 | TTFT | 请求发出到首个非空内容 chunk |
-| E2E | 请求发出到响应结束 |
 | TPOT | 首末内容 chunk 的间隔结合最终 usage 估算的每输出 token 时间 |
-| 输出吞吐 | 总输出 tokens / 第一条提交到最后一条结束的时间 |
-| Goodput | 同时满足 TTFT、TPOT、E2E 阈值的成功请求数 / 完整测量窗口 |
-| 已测闭环容量 | 三轮都达标的最大已测客户端并发 |
+| E2E | 请求发出到响应结束 |
+| 输出吞吐 | 总输出 token 除以第一条提交到最后一条结束的完整窗口 |
+| Goodput | 同时满足 TTFT、TPOT、E2E 阈值的成功请求数除以完整测量窗口 |
+| 已测闭环容量 | 三轮都满足合成 SLO 的最大已测客户端并发 |
 
-TPOT 不是逐 token ITL。正式报告从原始请求重算 P50/P90/P95，保留逐轮吞吐与标准差。SLO 使用测试前冻结的合成阈值，尚未对应生产需求。
+TPOT 不是逐 token ITL。正式报告从请求级数据重算 P50/P90/P95，同时保留逐轮吞吐、标准差、SLO 达标率和 Goodput。整卡 GPU 采样包含桌面和驱动占用，短时峰值可能被采样间隔遗漏；实际参数和缓存池字节以启动张量账本为准。
 
-## 数据放在哪里
+## PD 计划的负载与验收
 
-下列原始采集目录描述复现实验生成的数据，未包含在公开版中。公开版保留报告引用的去标识统计表和图表。
+PD 计划使用最终模板化后的完整输入 token，覆盖：
 
-- `runs/`：P0 和卸载诊断的逐请求、日志、资源采样及 manifest。
-- `processed/p0-control-*`：P0 报告使用的候选组数据；`processed/p0-*` 原有全量文件保留归档。
-- `p2/control/sessions/`：校准、筛选、正式测试和中断记录。
-- `baseline/control/sessions/`：六次启动、24 个资源观察窗口与原生计数。
-- 每批 `validation.json`、`restoration.json`：数据校验、生产文件哈希和退出恢复检查。
+- S：128/512，观察短请求 Decode 和输出吞吐。
+- L：14,336/256，隔离长 Prefill、TTFT 和传输等待。
+- C：14,336/1024，模拟编码助手长请求。
+- M-code：80% C 加 20% 2048/256 中等请求。
+- M-interference：80% 128/512 短请求加 20% C，观察长 Prefill 对短请求尾延迟的影响。
 
-整卡 GPU 采样包含桌面占用，约 1 秒的间隔可能漏掉短峰值。实际参数和缓存池字节以张量账本为准。框架依赖版本、池结构、工作区与 WSL/WDDM 差异见各报告。
+验收要求包括反向角色、长输入固定答案、多轮消息、SSE、KV/GDN 状态、并发隔离、模型和 tokenizer 一致性，以及两方向的 GPU 传输校验。性能比较前关闭诊断 checksum 和逐传输 trace；若出现状态损坏、错误答案或请求串扰，停止该批次。
 
-## 复现入口
+完整计划见 [pd/PLAN.md](pd/PLAN.md)，当前结果见 [pd/REPORT.md](pd/REPORT.md)。
 
-以下命令会启动测试容器。执行前打开 Docker Desktop，停止本地模型客户端，避免外部请求混入原生计数。
+## 发布边界
 
-```powershell
-# P0 历史全量验收；报告仅展示 control 候选
-.\.venv\Scripts\python.exe .\benchmark\scripts\prepare_p0.py
-.\.venv\Scripts\python.exe .\benchmark\scripts\run_p0.py --service vllm --profile existing
-.\.venv\Scripts\python.exe .\benchmark\scripts\run_p0.py --service sglang --profile existing
-.\.venv\Scripts\python.exe .\benchmark\scripts\run_p0.py --service vllm --profile control
-.\.venv\Scripts\python.exe .\benchmark\scripts\run_p0.py --service sglang --profile control
-.\.venv\Scripts\python.exe .\benchmark\scripts\summarize_p0.py
-.\.venv\Scripts\python.exe .\benchmark\scripts\validate_p0.py
-# 恢复生产容器定义，保持停止
-docker compose create --no-build --pull never vllm sglang
-```
-
-`validate_p0.py` 按历史四组配置验收，所以全量复现仍需运行 existing 组。只复核候选数据可读取 `p0-control-*` 文件，不必启动服务。
-
-Control 续跑和断点处理见[批次说明](p2/control/README.md)。离线报告入口为 `summarize_p0.py`、`report_p2.py`、`report_baseline.py` 和 `report_baseline_details.py`。这些脚本会重写对应派生产物；阅读报告无需运行它们。
-
-绘图库隔离放在 `.tools/benchmark-plot`；生产依赖和锁文件不包含绘图工具。
+发布版保留报告、汇总 JSON/CSV、图表、验证脚本和脱敏部署适配。原始请求 SSE、逐传输 trace、压缩轨迹、运行日志、进程锁、重试中间结果、实验源码副本、个人配置、IP、日期记录和本地路径不进入 GitHub。

@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=77,<80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-serving-wsl-rocm"
+version = "0.1.0"
+description = "Single-GPU WSL ROCm platform detection for this deployment"
+requires-python = ">=3.12"
+
+[project.entry-points."vllm.platform_plugins"]
+llm_serving_wsl_rocm = "llm_serving_wsl_rocm:register"
+
+[tool.setuptools.packages.find]
+where = ["."]

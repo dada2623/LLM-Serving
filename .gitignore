@@ -67,3 +67,13 @@ benchmark/baseline/control/*
 !benchmark/baseline/control/resources.png
 !benchmark/baseline/control/resources.svg
 !benchmark/baseline/control/utilization.png
+
+# Heterogeneous PD raw runs and local deployment products.
+experiments/
+benchmark/pd/runs/
+benchmark/pd/__pycache__/
+benchmark/pd/*.log
+benchmark/pd/*.pid
+docker/amd-wsl/outputs/
+benchmark/pd/figures/measured-*.png
+benchmark/pd/figures/measured-*.svg
