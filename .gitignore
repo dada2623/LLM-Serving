@@ -77,3 +77,19 @@ benchmark/pd/*.pid
 docker/amd-wsl/outputs/
 benchmark/pd/figures/measured-*.png
 benchmark/pd/figures/measured-*.svg
+
+# Reviewed P4 Control artifacts. Raw reruns stay local.
+benchmark/p4/*
+!benchmark/p4/control/
+benchmark/p4/control/*
+!benchmark/p4/control/README.md
+!benchmark/p4/control/REPORT.md
+!benchmark/p4/control/aggregate.csv
+!benchmark/p4/control/cell-results.csv
+!benchmark/p4/control/execution.json
+!benchmark/p4/control/resources.csv
+!benchmark/p4/control/restoration.json
+!benchmark/p4/control/summary.json
+!benchmark/p4/control/validation.json
+!benchmark/p4/control/comparison.png
+!benchmark/p4/control/comparison.svg

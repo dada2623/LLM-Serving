@@ -1,0 +1,47 @@
+router:
+  extraServicePorts:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8081
+  epp:
+    replicas: 1
+    pluginsConfigFile: optimized-baseline-plugins.yaml
+    pluginsCustomConfig:
+      optimized-baseline-plugins.yaml: |
+        apiVersion: llm-d.ai/v1
+        kind: EndpointPickerConfig
+        plugins:
+        - type: approx-prefix-cache-producer
+        - type: inflight-load-producer
+        - type: prefix-cache-affinity-filter
+        - type: token-load-scorer
+        schedulingProfiles:
+        - name: default
+          plugins:
+          - pluginRef: prefix-cache-affinity-filter
+          - pluginRef: token-load-scorer
+    resources:
+      requests:
+        cpu: "1"
+        memory: 2Gi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+  inferencePool:
+    failureMode: FailOpen
+  modelServers:
+    protocol: http
+    matchLabels:
+      llm-d.ai/guide: llm-serving
+      llm-d.ai/model-server: vllm
+      llm-d.ai/model: qwen3.5-9b-awq
+  proxy:
+    proxyType: envoy
+    resources:
+      requests:
+        cpu: "1"
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 2Gi

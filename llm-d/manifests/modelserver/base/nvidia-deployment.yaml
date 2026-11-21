@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-nvidia
+  labels:
+    llm-d.ai/guide: llm-serving
+    llm-d.ai/model-server: vllm
+    llm-d.ai/model: qwen3-0.6b
+    llm-d.ai/accelerator-vendor: nvidia
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vllm-nvidia
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vllm-nvidia
+        llm-d.ai/guide: llm-serving
+        llm-d.ai/model-server: vllm
+        llm-d.ai/model: qwen3-0.6b
+        llm-d.ai/accelerator-vendor: nvidia
+    spec:
+      serviceAccountName: llm-d-modelserver
+      runtimeClassName: nvidia
+      nodeSelector:
+        llm-d.ai/gpu-vendor: nvidia
+      containers:
+        - name: modelserver
+          image: docker.io/vllm/vllm-openai:v0.33.0
+          command: ["vllm", "serve"]
+          args:
+            - /models/Qwen3-0.6B
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+            - --served-model-name
+            - Qwen3-0.6B
+            - --dtype
+            - auto
+            - --max-model-len
+            - "4096"
+            - --max-num-seqs
+            - "8"
+            - --max-num-batched-tokens
+            - "2048"
+            - --gpu-memory-utilization
+            - "0.70"
+            - --enforce-eager
+          env:
+            - name: HF_HUB_OFFLINE
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: "2"
+              memory: 8Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: 16Gi
+              nvidia.com/gpu: "1"
+          startupProbe:
+            httpGet:
+              path: /v1/models
+              port: http
+            periodSeconds: 10
+            failureThreshold: 120
+          readinessProbe:
+            httpGet:
+              path: /v1/models
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: models
+          hostPath:
+            path: /srv/llm-serving/models
+            type: Directory
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
