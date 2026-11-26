@@ -1,0 +1,46 @@
+--- a/vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_worker.py
++++ b/vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_worker.py
+@@ -1308,6 +1308,18 @@
+                             kv_shape = tuple(kv_shape[i] for i in inv_order)
+                             permute_shape = True
+
++                if isinstance(self._layer_specs.get(layer_name), MambaSpec):
++                    strides = list(kv_cache.stride())
++                    page = self._layer_specs[layer_name].page_size_bytes
++                    strides[0] = page // kv_cache.element_size()
++                    # The final page needs its trailing padding registered too.
++                    allocation = torch.empty(
++                        (kv_cache.shape[0] * strides[0],), dtype=kv_dtype, device="cpu"
++                    )
++                    xfer_buffers[layer_name] = allocation.as_strided(
++                        kv_cache.shape, strides
++                    )
++                    continue
+                 xfer_buffers[layer_name] = torch.empty(
+                     kv_shape, dtype=kv_dtype, device="cpu"
+                 )
+@@ -1855,6 +1867,7 @@
+                 "Mixed-device KV registration is only supported for MLA "
+                 "models without Mamba layers."
+             )
++        self._diag_ranges = registration_ranges
+         for mem_type in sorted(set(region_mem_types)):
+             if mem_type == "DRAM" and self._skip_dram_xfer:
+                 continue
+@@ -2329,6 +2342,16 @@
+             )
+             return device_handle, blocks_data
+
++        mem_type = self.region_mem_types[0]
++        ranges = [(l, h, d) for (_, t), (l, h, d) in self._diag_ranges.items() if t == mem_type]
++        bad = []
++        for idx, row in enumerate(blocks_data):
++            ptr, length, dev, stride, count = map(int, row)
++            end = ptr + (count - 1) * stride + length
++            if not any(l <= ptr and end <= h and dev == d for l, h, d in ranges):
++                owning = [(h-l, ptr-l, end-h, d) for l,h,d in ranges if l <= ptr < h]
++                bad.append((idx, length, dev, stride, count, owning))
++        logger.warning("NIXL diagnostic: mem=%s ranges=%s descs=%s invalid=%s examples=%s", mem_type, len(ranges), len(blocks_data), len(bad), bad[:6])
+         # NIXL_INIT_AGENT to be used for preparations of local descs.
+         handle = self.nixl_wrapper.prep_xfer_dlist(
+             "NIXL_INIT_AGENT", blocks_data, mem_type=self.region_mem_types[0]

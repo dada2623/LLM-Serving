@@ -1,0 +1,20 @@
+apiVersion: llm-d.ai/v1
+kind: EndpointPickerConfig
+plugins:
+- type: approx-prefix-cache-producer
+- type: inflight-load-producer
+- type: prefix-cache-affinity-filter
+- type: token-load-scorer
+- type: epp-opt-profile-handler
+  parameters:
+    e2eCalibrationFile: /calibration/benefit.jsonl
+    ttftSLOSeconds: 5
+    metricsMaxAgeSeconds: 10
+schedulingProfiles:
+- name: default
+  plugins:
+  - pluginRef: prefix-cache-affinity-filter
+  - pluginRef: token-load-scorer
+- name: epp-opt-candidates
+  plugins:
+  - pluginRef: token-load-scorer

@@ -7,7 +7,7 @@
 | P0 | 采集验收 | 两框架候选各启动一次，各发 3 条测试请求和 1 条预热；核对模型、tokenizer、流式计时与原生计数 | [报告](reports/P0-REPORT.md) |
 | P1 | vLLM 卸载诊断 | 比较 5/2/0 GiB 卸载预算；记录实际驻留、源码路径和 PCIe 拷贝标尺 | [报告](reports/OFFLOAD-ABLATION.md) |
 | P2 | Control 资源校准 | 统一 BF16、16K、0 GiB 卸载和并发上限 16；两边 CUDA 参数字节相同，缓存池残差 0.6659% | [配置](p2/control/config.json)、[账本](p2/control/resource-alignment.json) |
-| P3 | Control 资源基线 | 每框架 3 次独立启动，无服务、预热空闲、请求后、停服后各观察 60 秒；共 24 个窗口 | [报告](baseline/control/REPORT.md) |
+| P3 | Control 资源基线 | 每框架 3 次独立启动，无服务、预热空闲、请求后、停服后各观察 60 秒；共 24 个窗口 | 本地基线报告 |
 | P4 | Control 正式并发测试 | 三档负载 × 五档并发 × 三次重复；筛选与正式各 90 单元，完成统计、校验和恢复 | [报告](p2/control/REPORT.md) |
 
 ## 本轮测了什么
@@ -28,8 +28,7 @@ P4 比较的是本机两套框架与依赖栈。缓存结构、缓冲区、工�
 
 ## 收尾与复现
 
-[正式校验](p2/control/validation.json)与[基线校验](baseline/control/validation.json)均通过。两批恢复记录确认生产文件哈希未变、容器定义已恢复。最后验收时两服务均停止，工作进程已退出；该状态不代表此刻的实时运行状态。
+[正式校验](p2/control/validation.json)与本地基线校验均通过。两批恢复记录确认生产文件哈希未变、容器定义已恢复。最后验收时两服务均停止，工作进程已退出；该状态不代表此刻的实时运行状态。
 
 - 正式批次：[恢复记录](p2/control/restoration.json)、[续跑方法](p2/control/README.md)。
-- 基线批次：[执行状态](baseline/control/execution.json)、[恢复记录](baseline/control/restoration.json)。
 - 请求、指标、采样和脚本入口：[benchmark/README.md](README.md)。

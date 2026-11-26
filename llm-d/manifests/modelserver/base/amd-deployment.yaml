@@ -26,7 +26,8 @@ spec:
         llm-d.ai/gpu-vendor: amd
       containers:
         - name: modelserver
-          image: docker.io/vllm/vllm-openai-rocm:v0.31.0
+          image: docker.io/vllm/vllm-openai-rocm:v0.33.0
+          imagePullPolicy: IfNotPresent
           command: ["vllm", "serve"]
           args:
             - /models/Qwen3-0.6B
@@ -50,6 +51,22 @@ spec:
           env:
             - name: HF_HUB_OFFLINE
               value: "1"
+            - name: PATH
+              value: /srv/llm-serving/venvs/vllm-rocm100-v033/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            - name: LD_LIBRARY_PATH
+              value: /srv/llm-serving/pd-runtime/ucx-1.23.2-rocm100/lib:/srv/llm-serving/pd-runtime/nixl-1.5.0-rocm/lib:/srv/llm-serving/compat/lib:/srv/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_core/lib:/srv/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_libraries/lib:/opt/rocm/lib
+            - name: ROCM_PATH
+              value: /srv/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_devel
+            - name: ROCM_HOME
+              value: /srv/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_devel
+            - name: HIP_PATH
+              value: /srv/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_devel
+            - name: PYTHONPATH
+              value: /srv/llm-serving/pd-runtime/nixl-1.5.0-rocm/lib/python3/dist-packages
+            - name: NIXL_PLUGIN_DIR
+              value: /srv/llm-serving/pd-runtime/nixl-1.5.0-rocm/lib/plugins
+            - name: LD_PRELOAD
+              value: /srv/llm-serving/pd-runtime/ucx-1.23.2-rocm100/lib/libucs.so.0:/srv/llm-serving/pd-runtime/ucx-1.23.2-rocm100/lib/libucp.so.0:/srv/llm-serving/pd-runtime/ucx-1.23.2-rocm100/lib/libuct.so.0
           ports:
             - name: http
               containerPort: 8000
@@ -82,12 +99,47 @@ spec:
             - name: models
               mountPath: /models
               readOnly: true
+            - name: rocm
+              mountPath: /opt/rocm
+              readOnly: true
+            - name: runtime-compat
+              mountPath: /srv/llm-serving/compat
+              readOnly: true
+            - name: vllm-runtime
+              mountPath: /srv/llm-serving/venvs/vllm-rocm100-v033
+              readOnly: true
+            - name: nixl-runtime
+              mountPath: /srv/llm-serving/pd-runtime/nixl-1.5.0-rocm
+              readOnly: true
+            - name: ucx-runtime
+              mountPath: /srv/llm-serving/pd-runtime/ucx-1.23.2-rocm100
+              readOnly: true
             - name: shm
               mountPath: /dev/shm
       volumes:
         - name: models
           hostPath:
             path: /srv/llm-serving/models
+            type: Directory
+        - name: rocm
+          hostPath:
+            path: /opt/rocm
+            type: Directory
+        - name: runtime-compat
+          hostPath:
+            path: /srv/llm-serving/amd-runtime/compat
+            type: Directory
+        - name: vllm-runtime
+          hostPath:
+            path: /srv/llm-serving/amd-runtime/venvs/vllm-rocm100-v033
+            type: Directory
+        - name: nixl-runtime
+          hostPath:
+            path: /srv/llm-serving/amd-runtime/pd-runtime/nixl-1.5.0-rocm
+            type: Directory
+        - name: ucx-runtime
+          hostPath:
+            path: /srv/llm-serving/amd-runtime/pd-runtime/ucx-1.23.2-rocm100
             type: Directory
         - name: shm
           emptyDir:

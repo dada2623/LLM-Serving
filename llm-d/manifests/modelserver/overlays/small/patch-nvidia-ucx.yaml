@@ -1,0 +1,10 @@
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: UCX_TLS
+    value: tcp,self,cuda_copy
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: UCX_NET_DEVICES
+    value: eth0

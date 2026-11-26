@@ -9,7 +9,7 @@
 1. vLLM/SGLang 单卡对照，关注 CPU 权重卸载、实际张量资源、并发尾延迟和资源生命周期。
 2. NVIDIA RTX 5070 Ti 与 AMD RX 7800 XT 的异构双机 PD，关注 Prefill/Decode 角色切分、GPU 状态传输和混合负载下的取舍。
 
-单卡对照的公开报告位于 `reports/`、`p2/control/` 和 `baseline/control/`。异构 PD 的计划、结果和图表位于 `pd/`。
+单卡对照的公开报告位于 `reports/` 和 `p2/control/`。基线留在本地的 `baseline/` 下。异构 PD 的计划、结果和图表位于 `pd/`。
 
 ## 异构 PD 的技术路径
 

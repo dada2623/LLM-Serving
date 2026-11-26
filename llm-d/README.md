@@ -115,6 +115,11 @@ SSH target 使用当前执行环境的 SSH 配置解析。仓库不提供本地�
 
 缩小模型不会自动把一张 GPU 切分成多个 Kubernetes GPU 资源。当前标准 overlay 每个 GPU 节点运行一个模型服务 Pod。若需要同一 GPU 上运行多个 Pod，先部署和验证 device plugin sharing 或 time-slicing，再调整副本数和资源请求。
 
-## 运行时边界
+## 小模型 P/D 和 EPP-Opt
 
-这个入口用于三节点 K3s 集群中的普通模型服务路由验证。Prefill/Decode 与 KV Cache 传输仍需要单独的网络、Pod-to-Pod、CPU buffer 和 GPU buffer 验证。单节点或单方向测试不能替代跨节点双向测量。
+Linux 小模型 overlay 为两个 vLLM Pod 启用 `TRITON_ATTN` 和 NIXL。
+两端均可担任 Prefill 或 Decode，通过 UCX TCP 和 CPU buffer 传输 KV Cache，并保留默认握手检查。Deployment 使用 `Recreate`。
+
+在 AMD 节点准备 `/opt/rocm` 与 `/srv/llm-serving/amd-runtime`。后者的子目录须与 [AMD Deployment 的 hostPath](manifests/modelserver/base/amd-deployment.yaml) 一致，分别提供兼容库、vLLM ROCm 虚拟环境、NIXL 与 UCX 运行时。
+
+普通 Router 在两个 vLLM 后端间做整请求路由。独立的 [EPP-Opt](epp-opt/README.md) 可将长请求的 Prefill 交给 AMD，并由 NVIDIA 执行 Decode。[双向 P/D 验证](pd/README.md)

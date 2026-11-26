@@ -1,0 +1,36 @@
+- op: add
+  path: /spec/strategy
+  value:
+    type: Recreate
+    rollingUpdate: null
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --attention-backend
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: TRITON_ATTN
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --kv-transfer-config
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: >-
+    {
+      "kv_connector": "NixlConnector",
+      "kv_role": "kv_both",
+      "kv_buffer_device": "cpu",
+      "kv_port": 18080,
+      "kv_connector_extra_config": {"backends": ["UCX"], "num_threads": 1}
+    }
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: VLLM_NIXL_SIDE_CHANNEL_HOST
+    valueFrom:
+      fieldRef:
+        fieldPath: status.podIP
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: VLLM_NIXL_SIDE_CHANNEL_PORT
+    value: "18080"

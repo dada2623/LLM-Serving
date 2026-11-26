@@ -32,12 +32,11 @@ secrets.*
 *.zip
 
 # Raw captures contain host identities, container environment and wall clocks.
-benchmark/runs/
+runs/
+/benchmark/baseline/
 benchmark/configs/
 benchmark/p2/*
 !benchmark/p2/control/
-benchmark/baseline/*
-!benchmark/baseline/control/
 
 # Publish only the reviewed artifacts from each batch.
 benchmark/p2/control/*
@@ -54,23 +53,9 @@ benchmark/p2/control/*
 !benchmark/p2/control/execution.json
 !benchmark/p2/control/comparison.png
 !benchmark/p2/control/comparison.svg
-benchmark/baseline/control/*
-!benchmark/baseline/control/REPORT.md
-!benchmark/baseline/control/config.json
-!benchmark/baseline/control/summary.json
-!benchmark/baseline/control/stage-resources.csv
-!benchmark/baseline/control/native-stage-resources.csv
-!benchmark/baseline/control/actual-storage.csv
-!benchmark/baseline/control/validation.json
-!benchmark/baseline/control/restoration.json
-!benchmark/baseline/control/execution.json
-!benchmark/baseline/control/resources.png
-!benchmark/baseline/control/resources.svg
-!benchmark/baseline/control/utilization.png
 
 # Heterogeneous PD raw runs and local deployment products.
 experiments/
-benchmark/pd/runs/
 benchmark/pd/__pycache__/
 benchmark/pd/*.log
 benchmark/pd/*.pid
@@ -93,3 +78,22 @@ benchmark/p4/control/*
 !benchmark/p4/control/validation.json
 !benchmark/p4/control/comparison.png
 !benchmark/p4/control/comparison.svg
+
+# Local machine configuration, captured diagnostics and personal scratch files.
+.DS_Store
+.agents/
+.ssh/
+.kube/
+.local/
+*.local
+*.local.*
+*.kubeconfig
+*.pid
+*.swp
+/llm-d/pd/archived/
+/llm-d/pd/production-config-history.md
+/llm-d/pd-decider/
+/llm-d/amd-wsl-k3s-validation-deprecated.md
+/benchmark/archived/
+/llm-d/epp-opt/profiles.json
+/llm-d/epp-opt/benefit-model.json

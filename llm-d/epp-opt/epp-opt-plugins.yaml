@@ -1,0 +1,14 @@
+apiVersion: llm-d.ai/v1
+kind: EndpointPickerConfig
+plugins:
+- type: approx-prefix-cache-producer
+- type: inflight-load-producer
+- type: token-load-scorer
+- type: epp-opt-profile-handler
+  parameters:
+    calibrationFile: /calibration/profiles.json
+    metricsMaxAgeSeconds: 10
+schedulingProfiles:
+- name: epp-opt-candidates
+  plugins:
+  - pluginRef: token-load-scorer

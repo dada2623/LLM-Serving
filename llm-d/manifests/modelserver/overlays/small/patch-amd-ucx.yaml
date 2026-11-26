@@ -1,0 +1,15 @@
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: UCX_TLS
+    value: tcp,self,rocm_copy
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: UCX_NET_DEVICES
+    value: eth0
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: UCX_MODULE_DIR
+    value: /srv/llm-serving/pd-runtime/ucx-1.23.2-rocm100/lib/ucx
