@@ -5,14 +5,20 @@ plugins:
 - type: inflight-load-producer
 - type: prefix-cache-affinity-filter
 - type: token-load-scorer
-- type: epp-opt-profile-handler
+- type: epp-opt-whole-request-filter
+- type: e2e-aware-pd-profile-handler
   parameters:
-    e2eCalibrationFile: /calibration/benefit.jsonl
-    ttftSLOSeconds: 5
+    predictorURL: http://epp-opt-predictor:8080
+    model: Qwen3-0.6B
+    runtime: small-v1
+    verifiedPD: []
+    calibrationEnabled: false
     metricsMaxAgeSeconds: 10
+    predictionTimeoutMillis: 35
 schedulingProfiles:
 - name: default
   plugins:
+  - pluginRef: epp-opt-whole-request-filter
   - pluginRef: prefix-cache-affinity-filter
   - pluginRef: token-load-scorer
 - name: epp-opt-candidates

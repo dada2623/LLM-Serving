@@ -11,6 +11,6 @@ COPY validate-vllm-runtime.py /app/validate-vllm-runtime.py
 COPY smoke-vllm-engine.py /app/smoke-vllm-engine.py
 RUN chmod 755 /app/start-vllm.sh
 
-ENV PATH=/opt/llm-serving/venvs/vllm-rocm100-v033/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV PATH=/srv/llm-serving/venvs/vllm-rocm100-v033/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WORKDIR /app
 ENTRYPOINT ["/app/start-vllm.sh"]

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-model=SET_MODEL_PATH
+model=/models/Qwen3.5-9B-AWQ
 if [[ ! -f "$model/config.json" ]]; then
     printf 'Model is not installed at %s. Install the selected QuantTrio checkpoint before starting inference.\n' "$model" >&2
     exit 66

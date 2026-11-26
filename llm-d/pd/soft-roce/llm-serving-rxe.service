@@ -1,0 +1,18 @@
+[Unit]
+Description=Soft-RoCE link for llm-d KV Cache
+Wants=network-online.target
+After=network-online.target
+Before=k3s-agent.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/llm-serving-rxe.conf
+ExecStart=/usr/local/libexec/llm-serving-rxe up "${RXE_NIC}" "${RXE_LOCAL_IP}"
+ExecStop=/usr/local/libexec/llm-serving-rxe down "${RXE_NIC}" "${RXE_LOCAL_IP}"
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

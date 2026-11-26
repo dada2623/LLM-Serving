@@ -92,8 +92,11 @@ benchmark/p4/control/*
 *.swp
 /llm-d/pd/archived/
 /llm-d/pd/production-config-history.md
-/llm-d/pd-decider/
 /llm-d/amd-wsl-k3s-validation-deprecated.md
 /benchmark/archived/
 /llm-d/epp-opt/profiles.json
 /llm-d/epp-opt/benefit-model.json
+/llm-d/epp-opt/benefit.jsonl
+/llm-d/epp-opt/e2e-calibration.jsonl
+/benchmark/pd/calibration-seed.jsonl
+/llm-d/epp-opt/calibration-seed.jsonl

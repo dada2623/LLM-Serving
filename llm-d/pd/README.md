@@ -2,6 +2,10 @@
 
 2026 年 11 月 23 日，AMD 与 NVIDIA 两个 Linux 节点使用 vLLM 0.33.0、NIXL connector 协议版本 15 和 `TRITON_ATTN`，在生产 Deployment 上通过了双向 Prefill/Decode（P/D）验证。两次传输均通过默认 NIXL 握手检查，Decode 通过 UCX TCP 从远端拉取 KV Cache，传输使用 CPU buffer。
 
+## 9B 生产 Soft-RoCE
+
+2026 年 11 月 26 日，现网 Qwen3.5-9B-AWQ 已切换到 `9b-rxe`。双向 P/D 通过默认 NIXL 握手，Decode 经 `rc_verbs/rxe_llm:1` 读取 KV。下文保留 Qwen3-0.6B 的 TCP 验证记录。[9B Soft-RoCE 生产配置](soft-roce/README.md)
+
 ## 生产实测结果
 
 | KV Cache 方向（Prefill → Decode） | Prefill / Decode HTTP | NIXL 成功传输次数 | KV Cache 字节数 | NIXL 传输耗时 | Decode 使用的外部 KV tokens |
@@ -9,7 +13,8 @@
 | NVIDIA → AMD | 200 / 200 | 1 | 3,670,016 | 15.028 ms | 31 |
 | AMD → NVIDIA | 200 / 200 | 1 | 1,835,008 | 9.248 ms | 15 |
 
-两端日志均记录 `NIXL compatibility check passed`，hash 同为 `6635163b974028e63062c857ab78d2e3c222ce806b5a30012589a8b5e6abbd8f`。两个方向的失败传输、失败通知和过期 KV 请求计数增量均为 0。
+两端日志均记录 `NIXL compatibility check passed`
+两个方向的失败传输、失败通知和过期 KV 请求计数增量均为 0。
 
 验证时两个模型 Deployment 均为 `1/1 Ready`，EPP Pod 为 `2/2 Ready`。两个模型端点的 `/v1/models` 均返回 HTTP 200，Router 普通推理的 `smoke.sh` 通过。
 
@@ -44,13 +49,9 @@ AMD 通过 `hostPath` 挂载 `/opt/rocm` 和 `/srv/llm-serving/amd-runtime` 下�
 
 ## 证据与验证范围
 
-- 配置升级、临时参数回收和部署操作记录见 [生产配置修正过程](production-config-history.md)。
+生产配置升级、临时参数回收和部署操作记录保存在本地运维记录中。
 
 本轮验证覆盖生产 Pod 之间的默认握手和 UCX TCP CPU-buffer KV Cache 传输。Router 的自动 P/D 调度、跨厂商 GPU buffer 直传和负载性能属于独立验证范围。
-
-## 已归档实验
-
-- [同 Pod 双 vLLM 容器实验](archived/same-pod/README.md)已认定为失败的优化方向。原单实例 Deployment 已恢复，实验摘要见归档。
 
 ## Qwen3.5-9B-AWQ 诊断
 

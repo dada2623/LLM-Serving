@@ -31,7 +31,7 @@ services:
       context: .
       dockerfile: docker/vllm/Dockerfile
       args:
-        BASE_IMAGE: ${VLLM_BASE_IMAGE:-vllm/vllm-openai:v0.32.0}
+        BASE_IMAGE: ${VLLM_BASE_IMAGE:-vllm/vllm-openai:v0.33.0}
     platform: linux/amd64
     environment: *environment
     volumes: *volumes
@@ -55,11 +55,7 @@ services:
       - --max-model-len
       - ${MAX_MODEL_LEN:-16384}
       - --gpu-memory-utilization
-      - ${VLLM_GPU_MEMORY_UTILIZATION:-0.60}
-      - --cpu-offload-gb
-      - ${VLLM_CPU_OFFLOAD_GB:-5}
-      - --cpu-offload-params
-      - ${VLLM_CPU_OFFLOAD_PARAMS:-mlp}
+      - ${VLLM_GPU_MEMORY_UTILIZATION:-0.80}
       - --max-num-seqs
       - ${MAX_CONCURRENT_REQUESTS:-1}
       - --max-num-batched-tokens

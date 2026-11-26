@@ -1,0 +1,38 @@
+api:
+  type: completion
+  streaming: true
+data:
+  type: shareGPT
+  path: /work/corpus.json
+  use_chat_template: false
+load:
+  type: concurrent
+  stages:
+    - num_requests: 1
+      concurrency_level: 1
+  num_workers: 1
+  request_timeout: 240.0
+  request_retries: 0
+  base_seed: 20261127
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+    use_server_output_tokens: true
+    per_request_fields:
+      request: true
+      info: true
+      response: false
+      response_chunks: true
+      computed_metrics: true
+storage:
+  local_storage:
+    path: /work/results/np-ad
+server:
+  type: vllm
+  model_name: Qwen3.5-9B-AWQ
+  base_url: http://epp-opt-calibration.llm-d-serving.svc.cluster.local:18084
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: /work/tokenizer

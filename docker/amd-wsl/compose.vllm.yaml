@@ -10,17 +10,17 @@ services:
     devices:
       - /dev/dxg:/dev/dxg
     env_file:
-      - /opt/llm-serving/config/vllm-service.env
+      - /srv/llm-serving/config/vllm-service.env
     environment:
       HSA_ENABLE_DXG_DETECTION: "1"
       ROCPROFILER_REGISTER_ENABLED: "0"
       LLM_SERVING_WSL_ROCM: "1"
       VLLM_PLUGINS: llm_serving_wsl_rocm
-      ROCR_VISIBLE_DEVICES: SET_ONE_VISIBLE_GPU
-      LD_LIBRARY_PATH: /opt/llm-serving/rocm100-wsl-host-bridge:/opt/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_core/lib:/opt/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_libraries/lib:/usr/lib/wsl/lib
-      ROCM_PATH: /opt/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_devel
-      ROCM_HOME: /opt/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_devel
-      HIP_PATH: /opt/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_devel
+      ROCR_VISIBLE_DEVICES: ${ROCR_VISIBLE_DEVICES:?Set the AMD GPU identifier}
+      LD_LIBRARY_PATH: /srv/llm-serving/rocm100-wsl-host-bridge:/srv/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_core/lib:/srv/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_libraries/lib:/usr/lib/wsl/lib
+      ROCM_PATH: /srv/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_devel
+      ROCM_HOME: /srv/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_devel
+      HIP_PATH: /srv/llm-serving/venvs/vllm-rocm100-v033/lib/python3.12/site-packages/_rocm_sdk_devel
       VLLM_USE_TRITON_AWQ: "1"
       VLLM_ROCM_USE_AITER: "0"
       HF_HOME: /cache/huggingface
@@ -30,10 +30,10 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - /opt/llm-serving/venvs/vllm-rocm100-v033:/opt/llm-serving/venvs/vllm-rocm100-v033:ro
-      - /opt/llm-serving/models:/models:ro
-      - /opt/llm-serving/cache-v033:/cache
-      - /opt/llm-serving/rocm100-wsl-host-bridge:/opt/llm-serving/rocm100-wsl-host-bridge:ro
+      - /srv/llm-serving/venvs/vllm-rocm100-v033:/srv/llm-serving/venvs/vllm-rocm100-v033:ro
+      - /srv/llm-serving/models:/models:ro
+      - /srv/llm-serving/cache-v033:/cache
+      - /srv/llm-serving/rocm100-wsl-host-bridge:/srv/llm-serving/rocm100-wsl-host-bridge:ro
       - /usr/lib/wsl/lib:/usr/lib/wsl/lib:ro
       - /usr/lib/wsl/lib/libdxcore.so:/usr/lib/libdxcore.so:ro
       - /opt/rocm/lib/librocdxg.so:/usr/lib/librocdxg.so:ro

@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: llm-serving-rxe-nvidia
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: llm-serving-rxe-nvidia
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: llm-serving-rxe-nvidia
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        llm-d.ai/soft-roce: "true"
+        llm-d.ai/gpu-vendor: nvidia
+      containers:
+        - name: device-plugin
+          image: docker.io/vllm/vllm-openai:v0.33.0
+          imagePullPolicy: IfNotPresent
+          command: [/opt/llm-serving/generic-device-plugin]
+          args:
+            - --domain=llm-d.ai
+            - --listen=127.0.0.1:8080
+            - --device
+            - |
+              name: soft-roce
+              groups:
+                - paths:
+                    - path: /dev/infiniband/uverbs0
+                      permissions: rw
+          resources:
+            requests:
+              cpu: 20m
+              memory: 24Mi
+            limits:
+              cpu: 100m
+              memory: 48Mi
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: binary
+              mountPath: /opt/llm-serving/generic-device-plugin
+              readOnly: true
+            - name: kubelet
+              mountPath: /var/lib/kubelet/device-plugins
+            - name: uverbs
+              mountPath: /dev/infiniband
+              readOnly: true
+      volumes:
+        - name: binary
+          hostPath:
+            path: /opt/llm-serving/generic-device-plugin
+            type: File
+        - name: kubelet
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+            type: Directory
+        - name: uverbs
+          hostPath:
+            path: /dev/infiniband
+            type: Directory
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: llm-serving-rxe-amd
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: llm-serving-rxe-amd
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: llm-serving-rxe-amd
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        llm-d.ai/soft-roce: "true"
+        llm-d.ai/gpu-vendor: amd
+      containers:
+        - name: device-plugin
+          image: docker.io/vllm/vllm-openai-rocm:v0.33.0
+          imagePullPolicy: IfNotPresent
+          command: [/opt/llm-serving/generic-device-plugin]
+          args:
+            - --domain=llm-d.ai
+            - --listen=127.0.0.1:8080
+            - --device
+            - |
+              name: soft-roce
+              groups:
+                - paths:
+                    - path: /dev/infiniband/uverbs0
+                      permissions: rw
+          resources:
+            requests:
+              cpu: 20m
+              memory: 24Mi
+            limits:
+              cpu: 100m
+              memory: 48Mi
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: binary
+              mountPath: /opt/llm-serving/generic-device-plugin
+              readOnly: true
+            - name: kubelet
+              mountPath: /var/lib/kubelet/device-plugins
+            - name: uverbs
+              mountPath: /dev/infiniband
+              readOnly: true
+      volumes:
+        - name: binary
+          hostPath:
+            path: /opt/llm-serving/generic-device-plugin
+            type: File
+        - name: kubelet
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+            type: Directory
+        - name: uverbs
+          hostPath:
+            path: /dev/infiniband
+            type: Directory

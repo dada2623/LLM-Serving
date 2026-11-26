@@ -1,12 +1,13 @@
-// Package handler connects the EPP scheduling cycle to the in-process TTFT model.
+// Package handler implements EPP-Opt's per-request route selection.
 package handler
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
+	"net/http"
+	"net/url"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -19,10 +20,12 @@ import (
 	"github.com/llm-d/llm-d-router/pkg/epp/framework/interface/scheduling"
 	attrprefix "github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/datalayer/attribute/prefix"
 	tokenproducer "github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/requesthandling/dataproducer/tokenizer"
+	"github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/scheduling/filter/bylabel"
 )
 
 const (
-	Type             = "epp-opt-profile-handler"
+	Type             = "e2e-aware-pd-profile-handler"
+	WholeFilterType  = "epp-opt-whole-request-filter"
 	candidateProfile = "epp-opt-candidates"
 	baselineProfile  = "default"
 	prefillProfile   = "prefill"
@@ -30,58 +33,67 @@ const (
 )
 
 var (
-	_ scheduling.ProfileHandler  = (*Handler)(nil)
-	_ requesthandling.PreRequest = (*Handler)(nil)
+	_ scheduling.ProfileHandler             = (*Handler)(nil)
+	_ requesthandling.PreRequest            = (*Handler)(nil)
+	_ requesthandling.ResponseBodyProcessor = (*Handler)(nil)
 )
 
 type config struct {
-	E2ECalibrationFile   string        `json:"e2eCalibrationFile"`
-	TTFTSLOSeconds       float64       `json:"ttftSLOSeconds"`
-	CalibrationFile      string        `json:"calibrationFile"`
-	MetricsMaxAgeSeconds int           `json:"metricsMaxAgeSeconds"`
-	Options              model.Options `json:"decision"`
+	PredictorURL            string   `json:"predictorURL"`
+	Model                   string   `json:"model"`
+	Runtime                 string   `json:"runtime"`
+	VerifiedPD              []string `json:"verifiedPD"`
+	MetricsMaxAgeSeconds    int      `json:"metricsMaxAgeSeconds"`
+	PredictionTimeoutMillis int      `json:"predictionTimeoutMillis"`
+	CalibrationEnabled      bool     `json:"calibrationEnabled"`
 }
 
 type Handler struct {
-	name   string
-	model  *model.Model
-	e2e    *model.E2EModel
-	config config
+	name     string
+	config   config
+	client   *http.Client
+	verified map[string]bool
+	feedback chan model.Observation
+	stateKey plugin.DataKey
 }
 
-func Factory(name string, params *json.Decoder, _ plugin.Handle) (plugin.Plugin, error) {
-	cfg := config{MetricsMaxAgeSeconds: 10}
+func Factory(name string, params *json.Decoder, handle plugin.Handle) (plugin.Plugin, error) {
+	cfg := config{MetricsMaxAgeSeconds: 10, PredictionTimeoutMillis: 35}
 	if params == nil {
-		return nil, errors.New("EPP-Opt needs a calibrationFile")
+		return nil, errors.New("EPP-Opt requires a predictor URL, model and runtime ID")
 	}
 	params.DisallowUnknownFields()
 	if err := params.Decode(&cfg); err != nil {
 		return nil, err
 	}
-	if cfg.E2ECalibrationFile != "" {
-		if !(cfg.TTFTSLOSeconds > 0) || cfg.MetricsMaxAgeSeconds <= 0 {
-			return nil, errors.New("E2E mode requires a positive TTFT SLO and metrics age")
+	u, err := url.Parse(cfg.PredictorURL)
+	if err != nil || u.Host == "" || u.Scheme != "http" || u.User != nil ||
+		u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") ||
+		cfg.Model == "" || cfg.Runtime == "" || cfg.MetricsMaxAgeSeconds <= 0 ||
+		cfg.PredictionTimeoutMillis <= 0 || cfg.PredictionTimeoutMillis > 1000 {
+		return nil, errors.New("invalid EPP-Opt prediction configuration")
+	}
+	cfg.PredictorURL = "http://" + u.Host
+	h := &Handler{
+		name: name, config: cfg, feedback: make(chan model.Observation, 1024),
+		verified: make(map[string]bool), stateKey: plugin.NewDataKey("EPPOptObservation", name),
+		client: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+	}
+	for _, route := range cfg.VerifiedPD {
+		if !model.IsPD(route) {
+			return nil, errors.New("verifiedPD accepts only ap-nd and np-ad")
 		}
-		fitted, err := model.LoadE2E(cfg.E2ECalibrationFile)
-		if err != nil {
-			return nil, fmt.Errorf("load E2E calibration: %w", err)
-		}
-		return &Handler{name: name, e2e: fitted, config: cfg}, nil
+		h.verified[route] = true
 	}
-	if cfg.CalibrationFile == "" || cfg.MetricsMaxAgeSeconds <= 0 {
-		return nil, errors.New("EPP-Opt requires calibrationFile and a positive metricsMaxAgeSeconds")
-	}
-	if err := cfg.Options.Validate(); err != nil {
-		return nil, err
-	}
-	fitted, err := model.Load(cfg.CalibrationFile)
-	if err != nil {
-		return nil, fmt.Errorf("load EPP-Opt profile: %w", err)
-	}
-	return &Handler{name: name, model: fitted, config: cfg}, nil
+	go h.submitFeedback(handle.Context())
+	return h, nil
 }
 
 func (h *Handler) TypedName() plugin.TypedName { return plugin.TypedName{Type: Type, Name: h.name} }
+
+func (h *Handler) Produces() map[plugin.DataKey]any {
+	return map[plugin.DataKey]any{h.stateKey: observationState{}}
+}
 
 func (h *Handler) Consumes() plugin.DataDependencies {
 	return plugin.DataDependencies{Required: map[plugin.DataKey]any{
@@ -90,140 +102,237 @@ func (h *Handler) Consumes() plugin.DataDependencies {
 	}}
 }
 
-func (h *Handler) Pick(_ context.Context, _ *scheduling.InferenceRequest, profiles map[string]scheduling.SchedulerProfile, results map[string]*scheduling.ProfileRunResult) map[string]scheduling.SchedulerProfile {
-	pending := make(map[string]scheduling.SchedulerProfile, 2)
-	if _, ran := results[candidateProfile]; !ran && profiles[candidateProfile] != nil {
-		pending[candidateProfile] = profiles[candidateProfile]
-	}
-	if h.e2e != nil {
-		if _, ran := results[baselineProfile]; !ran && profiles[baselineProfile] != nil {
-			pending[baselineProfile] = profiles[baselineProfile]
+type wholeRequestFilter struct{ name string }
+
+func WholeFilterFactory(name string, _ *json.Decoder, _ plugin.Handle) (plugin.Plugin, error) {
+	return &wholeRequestFilter{name: name}, nil
+}
+
+func (f *wholeRequestFilter) TypedName() plugin.TypedName {
+	return plugin.TypedName{Type: WholeFilterType, Name: f.name}
+}
+
+func (f *wholeRequestFilter) Filter(_ context.Context, _ *scheduling.InferenceRequest, endpoints []scheduling.Endpoint) []scheduling.Endpoint {
+	out := make([]scheduling.Endpoint, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		if p, d := roles(endpoint); p && d {
+			out = append(out, endpoint)
 		}
 	}
-	if len(pending) != 0 {
-		return pending
+	return out
+}
+
+func roles(ep scheduling.Endpoint) (prefill, decode bool) {
+	switch ep.GetMetadata().Labels[bylabel.RoleLabel] {
+	case "", bylabel.RolePrefillDecode, bylabel.RoleEncodePrefillDecode:
+		return true, true
+	case bylabel.RolePrefill, bylabel.RoleEncodePrefill:
+		return true, false
+	case bylabel.RoleDecode:
+		return false, true
 	}
-	return nil
+	return false, false
+}
+
+func (h *Handler) Pick(ctx context.Context, req *scheduling.InferenceRequest, profiles map[string]scheduling.SchedulerProfile, results map[string]*scheduling.ProfileRunResult) map[string]scheduling.SchedulerProfile {
+	pending := make(map[string]scheduling.SchedulerProfile, 2)
+	for _, name := range []string{baselineProfile, candidateProfile} {
+		if name == baselineProfile && h.calibrationRoute(ctx, req) != "" {
+			continue
+		}
+		if _, ran := results[name]; !ran && profiles[name] != nil {
+			pending[name] = profiles[name]
+		}
+	}
+	return pending
+}
+
+type path struct {
+	model.Candidate
+	prefill, decode scheduling.Endpoint
+}
+
+func endpointID(ep scheduling.Endpoint) string {
+	meta := ep.GetMetadata()
+	return meta.GetNamespacedName().String() + "@" + address(ep)
+}
+
+func address(ep scheduling.Endpoint) string {
+	meta := ep.GetMetadata()
+	return net.JoinHostPort(meta.Address, meta.Port)
+}
+
+func makePath(req *scheduling.InferenceRequest, runtime, route string, prefill, decode scheduling.Endpoint, p, d model.Load, input int, budget int64) path {
+	return path{
+		Candidate: model.Candidate{
+			ID:       route + "/" + endpointID(prefill) + "/" + endpointID(decode),
+			Features: model.Features{Model: req.TargetModel, Runtime: runtime, Route: route, Input: input, Budget: budget, Prefill: p, Decode: d},
+		},
+		prefill: prefill, decode: decode,
+	}
+}
+
+func requestFeatures(req *scheduling.InferenceRequest) (int, int64, string) {
+	body := req.Body
+	if body == nil || body.TokenizedRequest == nil || body.MaxOutputTokens == nil || *body.MaxOutputTokens <= 0 {
+		return 0, 0, "missing-request-features"
+	}
+	input, budget := body.TokenizedRequest.TokenCount(), *body.MaxOutputTokens
+	if input <= 0 {
+		return 0, 0, "missing-input-tokens"
+	}
+	return input, budget, ""
+}
+
+func (h *Handler) paths(req *scheduling.InferenceRequest, base scheduling.Endpoint, candidates *scheduling.ProfileRunResult) (path, map[string]path, string) {
+	input, budget, reason := requestFeatures(req)
+	if reason != "" {
+		return path{}, nil, reason
+	}
+	now := time.Now()
+	paths := make(map[string]path)
+	var baseline path
+	if base != nil {
+		baseLoad, ok := h.load(base, input, now)
+		vendor := base.GetMetadata().Labels[vendorLabel]
+		if !ok || (vendor != model.AMD && vendor != model.NVIDIA) {
+			return path{}, nil, "missing-baseline-features"
+		}
+		baseline = makePath(req, h.config.Runtime, vendor, base, base, baseLoad, baseLoad, input, budget)
+		paths[baseline.ID] = baseline
+	}
+	if candidates == nil {
+		return baseline, paths, ""
+	}
+	type worker struct {
+		ep              scheduling.Endpoint
+		load            model.Load
+		prefill, decode bool
+	}
+	workers := map[string][]worker{}
+	for _, c := range candidates.ScoredCandidates {
+		ep := c.Endpoint
+		vendor := ep.GetMetadata().Labels[vendorLabel]
+		if vendor != model.AMD && vendor != model.NVIDIA {
+			continue
+		}
+		load, ok := h.load(ep, input, now)
+		if !ok {
+			continue
+		}
+		p, d := roles(ep)
+		workers[vendor] = append(workers[vendor], worker{ep, load, p, d})
+		if p && d {
+			whole := makePath(req, h.config.Runtime, vendor, ep, ep, load, load, input, budget)
+			if whole.ID != baseline.ID {
+				paths[whole.ID] = whole
+			}
+		}
+	}
+	for _, pair := range []struct{ route, P, D string }{
+		{model.APND, model.AMD, model.NVIDIA}, {model.NPAD, model.NVIDIA, model.AMD},
+	} {
+		if !h.verified[pair.route] {
+			continue
+		}
+		for _, p := range workers[pair.P] {
+			if !p.prefill {
+				continue
+			}
+			for _, d := range workers[pair.D] {
+				if !d.decode || address(p.ep) == address(d.ep) {
+					continue
+				}
+				pd := makePath(req, h.config.Runtime, pair.route, p.ep, d.ep, p.load, d.load, input, budget)
+				paths[pd.ID] = pd
+			}
+		}
+	}
+	return baseline, paths, ""
 }
 
 func (h *Handler) ProcessResults(ctx context.Context, req *scheduling.InferenceRequest, results map[string]*scheduling.ProfileRunResult) (*scheduling.SchedulingResult, error) {
-	if req == nil {
-		return nil, errors.New("EPP-Opt request is nil")
+	if route := h.calibrationRoute(ctx, req); route != "" {
+		return h.selectCalibration(ctx, req, route, results[candidateProfile])
 	}
-	result := results[candidateProfile]
-	original := result
-	if h.e2e != nil {
-		original = results[baselineProfile]
-	}
-	if original == nil || len(original.TargetEndpoints) == 0 {
+	base := results[baselineProfile].FirstEndpoint()
+	if req == nil || base == nil {
 		return nil, errors.New("EPP-Opt has no eligible original endpoint")
 	}
-	if h.e2e != nil && original.TargetEndpoints[0].GetMetadata().Labels[vendorLabel] != "amd" {
-		return selected(original.TargetEndpoints[0], nil), nil
-	}
-	if h.e2e != nil && (result == nil || len(result.TargetEndpoints) == 0) {
-		return selected(original.TargetEndpoints[0], nil), nil
-	}
-	if result == nil || len(result.TargetEndpoints) == 0 {
-		return nil, errors.New("EPP-Opt has no eligible endpoints")
-	}
-	var nvidia, amd scheduling.Endpoint
-	var nvidiaCount, amdCount int
-	for _, ep := range result.ScoredCandidates {
-		switch ep.GetMetadata().Labels[vendorLabel] {
-		case "nvidia":
-			nvidia, nvidiaCount = ep.Endpoint, nvidiaCount+1
-		case "amd":
-			amd, amdCount = ep.Endpoint, amdCount+1
-		}
-	}
+	logger := log.FromContext(ctx).V(1)
 	fallback := func(reason string) (*scheduling.SchedulingResult, error) {
-		log.FromContext(ctx).V(1).Info("EPP-Opt fallback selection", "requestID", req.RequestID, "reason", reason)
-		return selected(original.TargetEndpoints[0], nil), nil
+		logger.Info("EPP-Opt fallback", "requestID", req.RequestID, "reason", reason)
+		return selected(base, nil), nil
 	}
-	if nvidiaCount != 1 || amdCount != 1 {
-		return fallback("calibration-requires-single-amd-and-nvidia")
+	// This pool serves one model. Unknown models follow the configured default profile.
+	if req.TargetModel != h.config.Model {
+		return fallback("unconfigured-model")
 	}
-	if req.Body == nil || req.Body.TokenizedRequest == nil {
-		return fallback("tokenization-unavailable")
+	baseline, candidates, reason := h.paths(req, base, results[candidateProfile])
+	if reason != "" {
+		return fallback(reason)
 	}
-	if !h.fresh(nvidia) || !h.fresh(amd) {
-		return fallback("load-snapshot-stale")
-	}
-	input := req.Body.TokenizedRequest.TokenCount()
-	nvidiaCached, lok := prefixHits(nvidia, input)
-	amdCached, rok := prefixHits(amd, input)
-	if !lok || !rok {
-		return fallback("prefix-snapshot-unavailable")
-	}
-	nm, am := nvidia.GetMetrics(), amd.GetMetrics()
-	workload := model.Workload{
-		InputTokens: input, NvidiaRunning: nm.RunningRequestsSize, NvidiaWaiting: nm.WaitingQueueSize,
-		AMDRunning: am.RunningRequestsSize, AMDWaiting: am.WaitingQueueSize,
-		NvidiaCached: nvidiaCached, AMDCached: amdCached, BurstSize: 1,
-	}
-	if h.e2e != nil {
-		if req.Body.MaxOutputTokens == nil {
-			return fallback("output-budget-unavailable")
+	chosen := baseline
+	var estimates model.Predictions
+	if len(candidates) > 1 {
+		var elapsed time.Duration
+		estimates, elapsed, reason = h.predict(ctx, candidates)
+		if _, ok := estimates.ByID[baseline.ID]; !ok && reason == "" {
+			reason = "baseline-prediction-unavailable"
 		}
-		amdEstimate, pdEstimate, err := h.e2e.Estimate(workload, *req.Body.MaxOutputTokens)
-		if err != nil {
-			return fallback(err.Error())
-		}
-		route := "amd"
-		if pdEstimate.E2E < amdEstimate.E2E && pdEstimate.TTFT <= h.config.TTFTSLOSeconds {
-			route = model.Remote
-		}
-		log.FromContext(ctx).V(1).Info("EPP-Opt E2E decision", "requestID", req.RequestID,
-			"route", route, "originalVendor", "amd", "outputTokens", *req.Body.MaxOutputTokens,
-			"amd", amdEstimate, "pd", pdEstimate, "ttftSLOSeconds", h.config.TTFTSLOSeconds, "workload", workload)
-		if route == model.Remote {
-			return selected(nvidia, original.TargetEndpoints[0]), nil
-		}
-		return selected(original.TargetEndpoints[0], nil), nil
+		chosen = candidates[model.Choose(baseline.ID, estimates.ByID, baseline.Features.Budget)]
+		logger.Info("EPP-Opt prediction", "requestID", req.RequestID, "rpcMs", milliseconds(elapsed), "fallback", reason,
+			"version", estimates.Version, "baseline", baseline.ID, "chosen", chosen.ID,
+			"baselineEstimate", estimates.ByID[baseline.ID], "chosenEstimate", estimates.ByID[chosen.ID])
 	}
-	decision, err := h.model.Decide(workload, h.config.Options)
-	if err != nil {
-		return fallback(err.Error())
+	req.PutAttribute(h.stateKey, observationState{observation: model.Observation{
+		RequestID: req.RequestID, Features: chosen.Features, Version: estimates.Version,
+	}})
+	if model.IsPD(chosen.Features.Route) {
+		return selected(chosen.decode, chosen.prefill), nil
 	}
-	log.FromContext(ctx).V(1).Info("EPP-Opt decision", "requestID", req.RequestID, "route", decision.Route,
-		"reason", decision.Reason, "estimation", decision.Estimation, "nvidiaTTFTMs", decision.LocalTTFT,
-		"pdTTFTMs", decision.RemoteTTFT, "kvMs", decision.KVMS, "workload", workload)
-	if decision.Route == model.Remote {
-		return selected(nvidia, amd), nil
-	}
-	return selected(nvidia, nil), nil
+	return selected(chosen.decode, nil), nil
 }
 
-func (h *Handler) fresh(ep scheduling.Endpoint) bool {
+func (h *Handler) load(ep scheduling.Endpoint, input int, now time.Time) (model.Load, bool) {
 	m := ep.GetMetrics()
-	return m.Updated() && time.Since(m.UpdateTime) <= time.Duration(h.config.MetricsMaxAgeSeconds)*time.Second
-}
-
-func prefixHits(ep scheduling.Endpoint, input int) (int, bool) {
+	if !m.Updated() || m.UpdateTime.After(now) || now.Sub(m.UpdateTime) > time.Duration(h.config.MetricsMaxAgeSeconds)*time.Second ||
+		m.RunningRequestsSize < 0 || m.WaitingQueueSize < 0 {
+		return model.Load{}, false
+	}
 	raw, _ := ep.Get(attrprefix.PrefixCacheMatchInfoDataKey)
 	info, ok := raw.(*attrprefix.PrefixCacheMatchInfo)
-	if !ok || info == nil {
-		return 0, false
+	if !ok || info == nil || info.CachedBlockCount() < 0 || info.BlockSizeTokens() < 0 {
+		return model.Load{}, false
 	}
-	return min(input, info.CachedBlockCount()*info.BlockSizeTokens()), true
+	return model.Load{
+		Cached:  min(input, info.CachedBlockCount()*info.BlockSizeTokens()),
+		Running: m.RunningRequestsSize, Waiting: m.WaitingQueueSize,
+	}, true
 }
 
 func selected(decode, prefill scheduling.Endpoint) *scheduling.SchedulingResult {
 	profiles := map[string]*scheduling.ProfileRunResult{
-		candidateProfile: {TargetEndpoints: []scheduling.Endpoint{decode}},
+		baselineProfile: {TargetEndpoints: []scheduling.Endpoint{decode}},
 	}
 	if prefill != nil {
 		profiles[prefillProfile] = &scheduling.ProfileRunResult{TargetEndpoints: []scheduling.Endpoint{prefill}}
 	}
-	return &scheduling.SchedulingResult{PrimaryProfileName: candidateProfile, ProfileResults: profiles}
+	return &scheduling.SchedulingResult{PrimaryProfileName: baselineProfile, ProfileResults: profiles}
 }
 
-func (h *Handler) PreRequest(_ context.Context, req *scheduling.InferenceRequest, result *scheduling.SchedulingResult) error {
+func (h *Handler) PreRequest(ctx context.Context, req *scheduling.InferenceRequest, result *scheduling.SchedulingResult) error {
+	route := h.calibrationRoute(ctx, req)
+	delete(req.Headers, calibrationHeader)
+	delete(req.Headers, calibrationAcceptedHeader)
+	if route != "" {
+		req.Headers[calibrationAcceptedHeader] = route
+	}
 	routing.DeleteRoutingHeader(req.Headers, routing.PrefillEndpointHeader)
-	if prefill := result.ProfileResults[prefillProfile]; prefill != nil {
-		meta := prefill.TargetEndpoints[0].GetMetadata()
-		routing.SetRoutingHeader(req.Headers, routing.PrefillEndpointHeader, net.JoinHostPort(meta.Address, meta.Port))
+	delete(req.Headers, model.DecodeHeader)
+	if prefill := result.ProfileResults[prefillProfile].FirstEndpoint(); prefill != nil {
+		routing.SetRoutingHeader(req.Headers, routing.PrefillEndpointHeader, address(prefill))
+		req.Headers[model.DecodeHeader] = address(result.PrimaryEndpoint())
 	}
 	return nil
 }

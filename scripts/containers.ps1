@@ -75,7 +75,7 @@ try {
     $engineState = Get-DockerEngineState
     if (-not $engineState.Available -and $Action -in @('start', 'gpu-check')) {
         if (-not (Get-CimInstance Win32_ComputerSystem).HypervisorPresent) {
-            throw 'Windows must be restarted to activate WSL 2 / Virtual Machine Platform. After restarting, run start.cmd again.'
+            throw 'Windows must be restarted to activate WSL 2 / Virtual Machine Platform. After restarting, run scripts/containers.ps1 -Action start again.'
         }
         $desktopExecutable = Join-Path $env:LOCALAPPDATA 'Programs/DockerDesktop/Docker Desktop.exe'
         if (-not (Test-Path -LiteralPath $desktopExecutable)) {

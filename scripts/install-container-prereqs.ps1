@@ -57,7 +57,7 @@ if (-not (Test-Path -LiteralPath $desktopExecutable)) {
 }
 if ((Get-CimInstance Win32_ComputerSystem).HypervisorPresent) {
     Start-Process -FilePath $desktopExecutable -WindowStyle Hidden
-    Write-Output 'Docker Desktop started. Wait for its engine, then run start.cmd.'
+    Write-Output 'Docker Desktop started. Wait for its engine, then run scripts/containers.ps1 -Action start.'
 } else {
-    Write-Output 'Docker Desktop installed. Reboot Windows, start Docker Desktop, then run start.cmd.'
+    Write-Output 'Docker Desktop installed. Reboot Windows, start Docker Desktop, then run scripts/containers.ps1 -Action start.'
 }

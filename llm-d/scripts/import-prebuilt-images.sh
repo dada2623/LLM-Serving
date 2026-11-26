@@ -78,7 +78,7 @@ vllm_archive=$(printf '%q' "$amd_vllm_archive")
 expected_vllm_sha256=$(printf '%q' "$amd_vllm_sha256")
 envoy_archive=$(printf '%q' "$amd_envoy_archive")
 expected_envoy_sha256=$(printf '%q' "$amd_envoy_sha256")
-vllm_image='docker.io/vllm/vllm-openai-rocm:v0.31.0'
+vllm_image='docker.io/vllm/vllm-openai-rocm:v0.33.0'
 envoy_image='docker.io/envoyproxy/envoy:distroless-v1.40.2'
 
 sudo -v

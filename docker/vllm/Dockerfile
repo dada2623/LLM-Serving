@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=vllm/vllm-openai:v0.32.0
+ARG BASE_IMAGE=vllm/vllm-openai:v0.33.0
 FROM ${BASE_IMAGE}
 
 ENV HF_HOME=/root/.cache/huggingface PYTHONUNBUFFERED=1

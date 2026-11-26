@@ -1,105 +1,118 @@
+// Package model defines the prediction service contract and path ranking.
 package model
 
 import (
-	"bufio"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"os"
+	"math"
 )
 
-type E2ESample struct {
-	Route         string  `json:"route"`
-	PromptTokens  int     `json:"prompt_tokens"`
-	OutputTokens  int     `json:"output_tokens"`
-	PrefixTokens  int     `json:"nominal_prefix_tokens"`
-	CachedTokens  *int    `json:"cached_tokens"`
-	NvidiaRunning int     `json:"nvidia_running"`
-	NvidiaWaiting int     `json:"nvidia_waiting"`
-	TTFT          float64 `json:"ttft_s"`
-	TPOT          float64 `json:"tpot_s"`
+const (
+	AMD            = "amd"
+	NVIDIA         = "nvidia"
+	APND           = "ap-nd"
+	NPAD           = "np-ad"
+	TTFTPenaltyMS  = 5000
+	DecodeHeader   = "x-epp-opt-decoder"
+	ExecutedHeader = "x-epp-opt-executed-pd"
+)
+
+type Load struct {
+	Cached  int `json:"cached_tokens"`
+	Running int `json:"running"`
+	Waiting int `json:"waiting"`
 }
 
-type Latency struct {
-	TTFT float64
-	TPOT float64
-	E2E  float64
+type Features struct {
+	Model   string `json:"model"`
+	Runtime string `json:"runtime"`
+	Route   string `json:"route"`
+	Input   int    `json:"input_tokens"`
+	Budget  int64  `json:"output_budget"`
+	Prefill Load   `json:"prefill"`
+	Decode  Load   `json:"decode"`
 }
 
-type E2EModel struct {
-	samples []E2ESample
-}
+func IsPD(route string) bool { return route == APND || route == NPAD }
 
-func LoadE2E(path string) (*E2EModel, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
+func (f Features) Valid() bool {
+	if f.Model == "" || f.Runtime == "" || f.Input <= 0 || f.Budget <= 0 {
+		return false
 	}
-	defer file.Close()
-
-	fitted := &E2EModel{}
-	counts := map[string]int{}
-	scanner := bufio.NewScanner(file)
-	for line := 1; scanner.Scan(); line++ {
-		var sample E2ESample
-		if err := json.Unmarshal(scanner.Bytes(), &sample); err != nil {
-			return nil, fmt.Errorf("line %d: %w", line, err)
+	if f.Route != AMD && f.Route != NVIDIA && !IsPD(f.Route) {
+		return false
+	}
+	for _, load := range []Load{f.Prefill, f.Decode} {
+		if load.Cached < 0 || load.Cached > f.Input || load.Running < 0 || load.Waiting < 0 {
+			return false
 		}
-		if sample.Route != "amd" && sample.Route != "pd" {
+	}
+	return IsPD(f.Route) || f.Prefill == f.Decode
+}
+
+type Candidate struct {
+	ID       string   `json:"id"`
+	Features Features `json:"features"`
+}
+
+type Prediction struct {
+	TTFT float64 `json:"ttft_ms"`
+	TPOT float64 `json:"tpot_ms"`
+}
+
+type Batch struct {
+	Candidates []Candidate `json:"candidates"`
+}
+
+type Predictions struct {
+	Version string                `json:"version"`
+	ByID    map[string]Prediction `json:"predictions"`
+}
+
+// Observation carries the frozen request-time features of one completed execution.
+type Observation struct {
+	RequestID string   `json:"request_id"`
+	Features  Features `json:"features"`
+	Version   string   `json:"prediction_version,omitempty"`
+	Output    int      `json:"output_tokens"`
+	TTFT      float64  `json:"ttft_ms"`
+	E2E       float64  `json:"e2e_ms"`
+}
+
+func (o Observation) Valid() bool {
+	return o.RequestID != "" && o.Features.Valid() && o.Output > 0 &&
+		Positive(o.TTFT) && Positive(o.E2E) && o.E2E >= o.TTFT &&
+		(o.Output == 1 || o.E2E > o.TTFT)
+}
+
+func Positive(value float64) bool {
+	return value > 0 && !math.IsInf(value, 0) && !math.IsNaN(value)
+}
+
+func (p Prediction) E2E(budget int64) float64 {
+	if budget == 1 {
+		return p.TTFT
+	}
+	return p.TTFT + float64(budget-1)*p.TPOT
+}
+
+// Choose returns the stable best alternative, or the baseline if its estimate is
+// missing or no alternative can improve E2E within the relative TTFT budget.
+func Choose(baseline string, estimates map[string]Prediction, budget int64) string {
+	valid := func(p Prediction) bool {
+		return budget > 0 && Positive(p.TTFT) && (budget == 1 || Positive(p.TPOT)) && Positive(p.E2E(budget))
+	}
+	base := estimates[baseline]
+	if !valid(base) {
+		return baseline
+	}
+	bestID, best := baseline, base
+	for id, p := range estimates {
+		if id == baseline || !valid(p) || p.TTFT > base.TTFT+TTFTPenaltyMS || p.E2E(budget) >= base.E2E(budget) {
 			continue
 		}
-		if sample.PromptTokens <= 0 || sample.OutputTokens <= 1 ||
-			!finite(sample.TTFT) || sample.TTFT <= 0 ||
-			!finite(sample.TPOT) || sample.TPOT <= 0 {
-			return nil, fmt.Errorf("invalid latency calibration on line %d", line)
+		if p.E2E(budget) < best.E2E(budget) ||
+			(p.E2E(budget) == best.E2E(budget) && (p.TTFT < best.TTFT || (p.TTFT == best.TTFT && id < bestID))) {
+			bestID, best = id, p
 		}
-		fitted.samples = append(fitted.samples, sample)
-		counts[sample.Route]++
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-	if counts["amd"] == 0 || counts["pd"] == 0 {
-		return nil, errors.New("E2E calibration needs both AMD and P/D samples")
-	}
-	return fitted, nil
+	return bestID
 }
-
-func (m *E2EModel) Estimate(w Workload, output int64) (Latency, Latency, error) {
-	if !w.valid() || output <= 0 {
-		return Latency{}, Latency{}, errors.New("invalid E2E workload")
-	}
-	return m.estimate("amd", w, output), m.estimate("pd", w, output), nil
-}
-
-func (m *E2EModel) estimate(route string, w Workload, output int64) Latency {
-	best := -1.0
-	var ttft, tpot []float64
-	for _, sample := range m.samples {
-		if sample.Route != route {
-			continue
-		}
-		cached := sample.PrefixTokens / 576 * 576
-		if route == "amd" && sample.CachedTokens != nil {
-			cached = *sample.CachedTokens
-		}
-		distance := squared(float64(w.InputTokens-sample.PromptTokens)/1024) +
-			squared(float64(output-int64(sample.OutputTokens))/1024) +
-			squared(float64(w.AMDCached-cached)/576)
-		if route == "pd" {
-			distance += squared(float64(w.NvidiaCached-cached)/576) +
-				squared(float64(w.NvidiaRunning-sample.NvidiaRunning)/4) +
-				squared(float64(w.NvidiaWaiting-sample.NvidiaWaiting)/2)
-		}
-		if best < 0 || distance < best {
-			best, ttft, tpot = distance, ttft[:0], tpot[:0]
-		}
-		if distance == best {
-			ttft, tpot = append(ttft, sample.TTFT), append(tpot, sample.TPOT)
-		}
-	}
-	first, token := median(ttft), median(tpot)
-	return Latency{TTFT: first, TPOT: token, E2E: first + float64(output-1)*token}
-}
-
-func squared(x float64) float64 { return x * x }

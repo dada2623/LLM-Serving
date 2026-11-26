@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd "$(dirname "$0")" && pwd)
-upstream=$(cd "${1:?usage: build.sh UPSTREAM_CHECKOUT IMAGE_TAG}" && pwd)
-image=${2:?usage: build.sh UPSTREAM_CHECKOUT IMAGE_TAG}
+upstream=$(cd "${1:?usage: build.sh UPSTREAM_CHECKOUT IMAGE_TAG [OCI_ARCHIVE]}" && pwd)
+image=${2:?usage: build.sh UPSTREAM_CHECKOUT IMAGE_TAG [OCI_ARCHIVE]}
+archive=${3:-}
 revision=$(cat "$root/upstream.rev")
 if [[ $(git -C "$upstream" rev-parse HEAD) != "$revision" ]]; then
   echo "Expected llm-d-router revision $revision" >&2
@@ -18,5 +19,10 @@ cp "$root/Dockerfile" "$work/image/"
   cd "$work/src"
   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o "$work/image/epp" ./cmd/epp
   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o "$work/image/pd-sidecar" ./cmd/pd-sidecar
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o "$work/image/predictor" ./eppopt/cmd/predictor
 )
+if [[ -n "$archive" ]]; then
+  python3 "$root/package-oci.py" "$archive" "$work/image" "$image" "$revision"
+  exit
+fi
 docker build --platform linux/amd64 --build-arg "UPSTREAM_REVISION=$revision" -t "$image" "$work/image"

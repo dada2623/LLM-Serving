@@ -13,12 +13,16 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 case "$profile" in
   small) model_overlay=small; router_values="$root/router/router-small.values.yaml" ;;
   9b) model_overlay=9b; router_values="$root/router/router-9b.values.yaml" ;;
-  *) echo '用法：deploy.sh <small|9b> linux' >&2; exit 2 ;;
+  9b-rxe)
+    [[ "$mode" == linux ]] || { echo "9b-rxe 需要 Linux 节点" >&2; exit 2; }
+    exec "$root/pd/soft-roce/deploy.sh" rxe
+    ;;
+  *) echo '用法：deploy.sh <small|9b|9b-rxe> linux' >&2; exit 2 ;;
 esac
 
 case "$mode" in
   linux) kustomization="$root/manifests/modelserver/overlays/$model_overlay" ;;
-  *) echo '用法：deploy.sh <small|9b> linux' >&2; exit 2 ;;
+  *) echo '用法：deploy.sh <small|9b|9b-rxe> linux' >&2; exit 2 ;;
 esac
 
 command -v kubectl >/dev/null || { echo '缺少 kubectl' >&2; exit 127; }

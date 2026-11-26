@@ -24,7 +24,7 @@ run_local_smoke() {
 
   local models_json=''
   for _ in $(seq 1 20); do
-    if models_json=$(curl -fsS "http://localhost:$forward_port/v1/models" 2>/dev/null); then
+    if models_json=$(curl -fsS "http://127.0.0.1:$forward_port/v1/models" 2>/dev/null); then
       break
     fi
     sleep 1
@@ -38,7 +38,7 @@ run_local_smoke() {
 
   local payload
   payload=$(printf '{"model":"%s","prompt":"请用一句话说明 Router 已经把请求转发到模型服务。","max_tokens":24}' "$model_name")
-  curl -fsS -X POST "http://localhost:$forward_port/v1/completions" \
+  curl -fsS -X POST "http://127.0.0.1:$forward_port/v1/completions" \
     -H 'Content-Type: application/json' \
     -d "$payload"
   printf '\nRouter smoke test passed\n'
@@ -63,7 +63,7 @@ cleanup() {
 trap cleanup EXIT
 models_json=''
 for _ in $(seq 1 20); do
-  if models_json=$(curl -fsS "http://localhost:$forward_port/v1/models" 2>/dev/null); then
+  if models_json=$(curl -fsS "http://127.0.0.1:$forward_port/v1/models" 2>/dev/null); then
     break
   fi
   sleep 1
@@ -75,7 +75,7 @@ done
 }
 printf '%s\n' "$models_json"
 payload=$(printf '{"model":"%s","prompt":"请用一句话说明 Router 已经把请求转发到模型服务。","max_tokens":24}' "$model_name")
-curl -fsS -X POST "http://localhost:$forward_port/v1/completions" \
+curl -fsS -X POST "http://127.0.0.1:$forward_port/v1/completions" \
   -H 'Content-Type: application/json' \
   -d "$payload"
 printf '\nRouter smoke test passed\n'

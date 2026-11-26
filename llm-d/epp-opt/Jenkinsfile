@@ -1,0 +1,91 @@
+pipeline {
+    agent { label 'epp-opt-builder' }
+
+    options {
+        skipDefaultCheckout()
+        disableConcurrentBuilds()
+        timeout(time: 45, unit: 'MINUTES')
+    }
+
+    parameters {
+        booleanParam(name: 'PUBLISH_IMAGE', defaultValue: false, description: 'Push the verified image to GHCR')
+        string(name: 'IMAGE_REPOSITORY', defaultValue: '', description: 'ghcr.io/<owner>/epp-opt')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                deleteDir()
+                checkout scm
+                script {
+                    env.EPP_OPT_REVISION = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.EPP_OPT_TAG = "${env.EPP_OPT_REVISION.take(12)}-${env.BUILD_NUMBER}"
+                    env.EPP_OPT_IMAGE = "epp-opt:${env.EPP_OPT_TAG}"
+                    if (params.PUBLISH_IMAGE) {
+                        def repository = params.IMAGE_REPOSITORY.trim()
+                        if (!(repository ==~ /ghcr[.]io\/[a-z0-9][a-z0-9-]*\/epp-opt/)) {
+                            error('Set IMAGE_REPOSITORY to ghcr.io/<owner>/epp-opt using a lowercase owner')
+                        }
+                        env.EPP_OPT_REPOSITORY = repository
+                        env.EPP_OPT_IMAGE = "${repository}:${env.EPP_OPT_TAG}"
+                    }
+                }
+                sh '''#!/usr/bin/env bash
+set -euo pipefail
+revision=$(cat llm-d/epp-opt/upstream.rev)
+git init -q .epp-opt-ci/router
+git -C .epp-opt-ci/router fetch --depth=1 https://github.com/llm-d/llm-d-router.git "$revision"
+git -C .epp-opt-ci/router checkout --detach FETCH_HEAD
+'''
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh '''#!/usr/bin/env bash
+set -euo pipefail
+epp_opt="$PWD/llm-d/epp-opt"
+bash -n "$epp_opt/build.sh"
+bash -n "$epp_opt/prepare.sh"
+mkdir .epp-opt-ci/test-src
+git -C .epp-opt-ci/router archive HEAD | tar -x -C .epp-opt-ci/test-src
+"$epp_opt/prepare.sh" "$PWD/.epp-opt-ci/test-src"
+cd .epp-opt-ci/test-src
+CGO_ENABLED=0 go test ./eppopt/... ./cmd/epp ./cmd/pd-sidecar ./pkg/sidecar/proxy
+'''
+            }
+        }
+
+        stage('Build Image') {
+            steps {
+                sh 'llm-d/epp-opt/build.sh .epp-opt-ci/router "$EPP_OPT_IMAGE"'
+            }
+        }
+
+        stage('Publish Image') {
+            when { expression { params.PUBLISH_IMAGE } }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'epp-opt-ghcr',
+                    usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
+                    sh '''#!/usr/bin/env bash
+set -euo pipefail
+export DOCKER_CONFIG
+DOCKER_CONFIG=$(mktemp -d)
+trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+printf '%s\\n' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
+docker push "$EPP_OPT_IMAGE" | tee .epp-opt-ci/push.log
+digest=$(awk -v tag="$EPP_OPT_TAG" '$1 == tag ":" && $2 == "digest:" { print $3 }' .epp-opt-ci/push.log)
+if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    echo 'Docker push did not report a manifest digest' >&2
+    exit 1
+fi
+printf 'image=%s\\nimage_by_digest=%s@%s\\nsource_revision=%s\\nupstream_revision=%s\\n' \\
+    "$EPP_OPT_IMAGE" "$EPP_OPT_REPOSITORY" "$digest" "$EPP_OPT_REVISION" \\
+    "$(cat llm-d/epp-opt/upstream.rev)" > .epp-opt-ci/image.env
+'''
+                }
+                archiveArtifacts artifacts: '.epp-opt-ci/image.env', fingerprint: true
+            }
+        }
+    }
+}
